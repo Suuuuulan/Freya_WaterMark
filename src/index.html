@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Freya 水印相机 · 批量加水印</title>
+<meta name="description" content="纯前端图片水印工具：拖拽导入、参数自定义、批量导出 ZIP。">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-dot"></span>
+    <h1>Freya 水印相机</h1>
+    <span class="brand-sub">纯前端 · 图片不出本机 · 可直接部署到 Pages</span>
+  </div>
+  <div class="top-actions">
+    <button id="btnAdd" class="btn">选择图片</button>
+    <button id="btnExportOne" class="btn" disabled>导出当前</button>
+    <button id="btnExportZip" class="btn btn-primary" disabled>批量导出 ZIP</button>
+    <button id="btnReset" class="btn btn-ghost" title="恢复为参考图默认参数">恢复默认</button>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- ============ 左侧：参数面板 ============ -->
+  <aside class="panel" id="panel">
+
+    <section class="card">
+      <h2>1 · 导入图片</h2>
+      <div class="drop" id="drop">
+        <strong>拖拽图片到这里</strong>
+        <span>或点击选择 / 粘贴（Ctrl+V）· 支持 JPG / PNG / WebP</span>
+      </div>
+      <div class="row small muted" id="queueInfo">队列为空</div>
+    </section>
+
+    <section class="card">
+      <h2>2 · 位置与尺寸</h2>
+      <div class="ctl">
+        <label>水印位置</label>
+        <div class="seg" id="segPos">
+          <button data-pos="bottom-left" class="active">左下</button>
+          <button data-pos="bottom-right">右下</button>
+          <button data-pos="top-left">左上</button>
+          <button data-pos="top-right">右上</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <label>缩放 <output id="outScale">100%</output></label>
+        <input type="range" id="scale" min="20" max="220" value="100">
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>水平边距 <output id="outMarginX">2.2%</output></label>
+          <input type="range" id="marginX" min="0" max="30" step="0.1" value="2.2">
+        </div>
+        <div>
+          <label>垂直边距 <output id="outMarginY">2.3%</output></label>
+          <input type="range" id="marginY" min="0" max="30" step="0.1" value="2.3">
+        </div>
+      </div>
+      <div class="ctl">
+        <label>整体不透明度 <output id="outOpacity">100%</output></label>
+        <input type="range" id="opacity" min="10" max="100" value="100">
+      </div>
+      <div class="ctl small muted">提示：选中图片后可用方向键微调边距（按住 Shift 加大步长）。</div>
+    </section>
+
+    <section class="card">
+      <h2>3 · 表格内容</h2>
+      <div class="ctl">
+        <label>顶部标题</label>
+        <input type="text" id="title" value="南京云之宝智算中心" placeholder="例如：某某公司项目部">
+      </div>
+
+      <div class="ctl field">
+        <div class="field-head">
+          <label>第 1 行</label>
+          <label class="chk"><input type="checkbox" id="r1on" checked><span>显示</span></label>
+        </div>
+        <div class="grid2">
+          <input type="text" id="r1label" value="拍摄时间:" placeholder="标签">
+          <select id="r1type">
+            <option value="datetime">拍摄时间</option>
+            <option value="date">仅日期</option>
+            <option value="time">仅时间</option>
+            <option value="text">自定义文本</option>
+          </select>
+        </div>
+        <input type="text" id="r1text" value="2026.08.19 10:59" placeholder="自定义文本内容">
+        <div class="row small">
+          <button class="btn btn-mini" data-now="r1text" type="button">用当前时间</button>
+          <button class="btn btn-mini" data-filetime="r1text" type="button">用图片时间</button>
+        </div>
+      </div>
+
+      <div class="ctl field">
+        <div class="field-head">
+          <label>第 2 行</label>
+          <label class="chk"><input type="checkbox" id="r2on" checked><span>显示</span></label>
+        </div>
+        <div class="grid2">
+          <input type="text" id="r2label" value="地　　点:" placeholder="标签">
+          <select id="r2type">
+            <option value="text">自定义文本</option>
+            <option value="datetime">拍摄时间</option>
+            <option value="date">仅日期</option>
+            <option value="time">仅时间</option>
+          </select>
+        </div>
+        <textarea id="r2text" rows="2" placeholder="地点内容，可留空">南京市江宁区·南京绿地国际花都2期</textarea>
+      </div>
+
+      <div class="ctl field">
+        <div class="field-head">
+          <label>第 3 行</label>
+          <label class="chk"><input type="checkbox" id="r3on"><span>显示</span></label>
+        </div>
+        <div class="grid2">
+          <input type="text" id="r3label" value="备注:" placeholder="标签">
+          <select id="r3type">
+            <option value="text">自定义文本</option>
+            <option value="datetime">拍摄时间</option>
+            <option value="date">仅日期</option>
+            <option value="time">仅时间</option>
+          </select>
+        </div>
+        <input type="text" id="r3text" value="" placeholder="自定义文本内容">
+      </div>
+
+      <div class="ctl">
+        <label>标签列宽 <output id="outLabelW">100%</output></label>
+        <input type="range" id="labelW" min="40" max="220" value="100">
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>4 · 外观样式</h2>
+      <div class="ctl grid2">
+        <div>
+          <label>主色（顶栏）</label>
+          <input type="color" id="accent" value="#15a7fa">
+        </div>
+        <div>
+          <label>圆点颜色</label>
+          <input type="color" id="dotColor" value="#f4c647">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>表格底色</label>
+          <input type="color" id="bgColor" value="#f5f5f5">
+        </div>
+        <div>
+          <label>文字颜色</label>
+          <input type="color" id="textColor" value="#111111">
+        </div>
+      </div>
+      <div class="ctl">
+        <label>字体</label>
+        <select id="fontFamily">
+          <option value="Microsoft YaHei, PingFang SC, Hiragino Sans GB, Noto Sans CJK SC, sans-serif">微软雅黑 / 苹方（默认）</option>
+          <option value="SimHei, Heiti SC, sans-serif">黑体</option>
+          <option value="SimSun, Songti SC, serif">宋体</option>
+          <option value="KaiTi, Kaiti SC, STKaiti, serif">楷体</option>
+          <option value="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">系统无衬线</option>
+        </select>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>标题字距 <output id="outTitleLS">0.34</output>em</label>
+          <input type="range" id="titleLS" min="0" max="0.8" step="0.01" value="0.34">
+        </div>
+        <div>
+          <label>正文字距 <output id="outBodyLS">0.10</output>em</label>
+          <input type="range" id="bodyLS" min="0" max="0.8" step="0.01" value="0.1">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>圆角 <output id="outRadius">26</output></label>
+          <input type="range" id="radius" min="0" max="90" value="26">
+        </div>
+        <div>
+          <label>投影浓度 <output id="outShadow">18%</output></label>
+          <input type="range" id="shadow" min="0" max="60" value="18">
+        </div>
+      </div>
+      <div class="ctl">
+        <label class="chk"><input type="checkbox" id="showTable" checked><span>显示信息表格</span></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>5 · 右下角防伪</h2>
+      <div class="ctl">
+        <label class="chk"><input type="checkbox" id="showLogo" checked><span>显示防伪标识（今日水印 logo）</span></label>
+      </div>
+      <div class="ctl">
+        <label>Logo 缩放 <output id="outLogoScale">100%</output></label>
+        <input type="range" id="logoScale" min="20" max="200" value="100">
+      </div>
+      <div class="ctl">
+        <label class="chk"><input type="checkbox" id="showCode" checked><span>显示防伪码（每张随机生成）</span></label>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>防伪码位数</label>
+          <input type="number" id="codeLen" min="4" max="24" value="10">
+        </div>
+        <div>
+          <label>防伪标签文字</label>
+          <input type="text" id="codeLabel" value="防伪" maxlength="4">
+        </div>
+      </div>
+      <div class="ctl">
+        <label>防伪码字号 <output id="outCodeSize">100%</output></label>
+        <input type="range" id="codeSize" min="40" max="220" value="100">
+      </div>
+      <div class="ctl small muted">
+        防伪码在每张图片导出时重新随机生成；预览显示的是「当前预览码」。
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>6 · 输出</h2>
+      <div class="ctl grid2">
+        <div>
+          <label>格式</label>
+          <select id="format">
+            <option value="image/jpeg">JPG（体积小）</option>
+            <option value="image/png">PNG（无损）</option>
+            <option value="image/webp">WebP</option>
+          </select>
+        </div>
+        <div>
+          <label>质量 <output id="outQuality">92%</output></label>
+          <input type="range" id="quality" min="50" max="100" value="92">
+        </div>
+      </div>
+      <div class="ctl">
+        <label>文件名模板</label>
+        <input type="text" id="nameTpl" value="{name}_watermark" placeholder="{name}_watermark">
+        <div class="small muted" style="margin-top:6px">
+          可用变量：<code>{name}</code> 原文件名 ·
+          <code>{date}</code> 日期 · <code>{time}</code> 时间 ·
+          <code>{code}</code> 防伪码 · <code>{i}</code> 序号 ·
+          <code>{w}</code> 宽 · <code>{h}</code> 高
+        </div>
+      </div>
+      <div class="ctl">
+        <label>长边最大像素（0 = 保持原图）</label>
+        <input type="number" id="maxEdge" min="0" max="12000" step="100" value="0">
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- ============ 右侧：预览 + 队列 ============ -->
+  <section class="stage">
+    <div class="stage-head">
+      <div class="thumbs" id="thumbs"></div>
+      <div class="stage-tools">
+        <span class="chip" id="imgMeta">未导入图片</span>
+        <label class="chk"><input type="checkbox" id="fitView" checked><span>适应窗口</span></label>
+        <button class="btn btn-mini" id="btnClear" type="button">清空队列</button>
+      </div>
+    </div>
+
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="preview"></canvas>
+      <div class="empty" id="empty">
+        <div class="empty-icon">🖼️</div>
+        <strong>把图片拖进来开始</strong>
+        <span>支持一次拖入多张，批量处理</span>
+      </div>
+    </div>
+
+    <div class="progress" id="progress" hidden>
+      <div class="bar"><i id="progressBar"></i></div>
+      <span id="progressText">处理中…</span>
+    </div>
+  </section>
+
+</main>
+
+<input type="file" id="fileInput" accept="image/*" multiple hidden>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="zip.js"></script>
+<script src="logo-data.js"></script>
+<script src="render.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
