@@ -10,12 +10,45 @@
 
   const $ = (id) => document.getElementById(id);
 
+  /* ---------------- 参数持久化（localStorage） ----------------
+   * 只持久化「参数」，不持久化图片队列；code 是每张导出时随机生成的，不入库。
+   * 隐私模式/禁用存储时 localStorage 会抛异常，全部包 try/catch 静默降级。 */
+  const STORE_KEY = 'freya-watermark.params.v1';
+
+  function loadSavedParams() {
+    const base = JSON.parse(JSON.stringify(WM.DEFAULTS));
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return base;
+      const saved = JSON.parse(raw);
+      if (!saved || typeof saved !== 'object') return base;
+      const merged = Object.assign(base, saved);
+      delete merged.code;                 // 运行期字段，不恢复
+      if (!Array.isArray(merged.rows) || !merged.rows.length) merged.rows = base.rows;
+      return merged;
+    } catch (e) {
+      return base;                        // 存档损坏 → 回退默认
+    }
+  }
+
+  function saveParams() {
+    try {
+      const out = JSON.parse(JSON.stringify(state.params));
+      delete out.code;
+      localStorage.setItem(STORE_KEY, JSON.stringify(out));
+    } catch (e) { /* 存储不可用则忽略 */ }
+  }
+
+  function clearSavedParams() {
+    try { localStorage.removeItem(STORE_KEY); } catch (e) { /* 忽略 */ }
+  }
+
   /* ---------------- 状态 ---------------- */
   const state = {
     items: [],          // { id, file, url, img, name, base, date, code, w, h }
     active: -1,
     previewCode: WM.randomCode(WM.DEFAULTS.codeLen),
-    params: JSON.parse(JSON.stringify(WM.DEFAULTS)),
+    params: loadSavedParams(),
     busy: false
   };
 
@@ -148,7 +181,7 @@
   }
 
   /* ---------------- 参数 ↔ 界面 ---------------- */
-  const CONTROL_IDS = ['scale', 'marginX', 'marginY', 'opacity', 'title', 'titleLS', 'bodyLS',
+  const CONTROL_IDS = ['scale', 'marginX', 'marginY', 'opacity', 'tableOpacity', 'title', 'titleLS', 'bodyLS',
     'labelW', 'accent', 'dotColor', 'bgColor', 'textColor', 'fontFamily', 'radius', 'shadow',
     'showTable', 'showLogo', 'logoScale', 'showCode', 'codeLen', 'codeLabel', 'codeSize'];
 
@@ -162,6 +195,7 @@
     p.marginX = +$('marginX').value;
     p.marginY = +$('marginY').value;
     p.opacity = +$('opacity').value / 100;
+    p.tableOpacity = +$('tableOpacity').value / 100;
     p.title = $('title').value;
     p.titleLS = +$('titleLS').value;
     p.bodyLS = +$('bodyLS').value;
@@ -192,6 +226,7 @@
     $('outMarginX').textContent = (+$('marginX').value).toFixed(1) + '%';
     $('outMarginY').textContent = (+$('marginY').value).toFixed(1) + '%';
     $('outOpacity').textContent = $('opacity').value + '%';
+    $('outTableOpacity').textContent = $('tableOpacity').value + '%';
     $('outLabelW').textContent = $('labelW').value + '%';
     $('outTitleLS').textContent = (+$('titleLS').value).toFixed(2);
     $('outBodyLS').textContent = (+$('bodyLS').value).toFixed(2);
@@ -213,6 +248,7 @@
     $('marginX').value = p.marginX;
     $('marginY').value = p.marginY;
     $('opacity').value = Math.round(p.opacity * 100);
+    $('tableOpacity').value = Math.round((p.tableOpacity == null ? 1 : p.tableOpacity) * 100);
     $('title').value = p.title;
     $('titleLS').value = p.titleLS;
     $('bodyLS').value = p.bodyLS;
@@ -567,32 +603,33 @@
         state.params.position = b.dataset.pos;
         document.querySelectorAll('#segPos button').forEach((x) => x.classList.toggle('active', x === b));
         scheduleRender();
+        saveParams();
       };
     });
 
-    // 参数控件
+    // 参数控件（改动即持久化）
     CONTROL_IDS.forEach((id) => {
       const el = $(id);
       if (!el) return;
-      el.addEventListener('input', () => { readUI(); scheduleRender(); });
-      el.addEventListener('change', () => { readUI(); scheduleRender(); });
+      el.addEventListener('input', () => { readUI(); scheduleRender(); saveParams(); });
+      el.addEventListener('change', () => { readUI(); scheduleRender(); saveParams(); });
     });
     ROW_IDS.forEach((r) => {
       [r.on, r.label, r.type, r.text].forEach((id) => {
         const el = $(id);
-        el.addEventListener('input', () => { readUI(); scheduleRender(); });
-        el.addEventListener('change', () => { readUI(); scheduleRender(); });
+        el.addEventListener('input', () => { readUI(); scheduleRender(); saveParams(); });
+        el.addEventListener('change', () => { readUI(); scheduleRender(); saveParams(); });
       });
     });
 
-    // 快捷按钮
+    // 快捷按钮（会改写行内容 → 一并持久化）
     document.querySelectorAll('[data-now]').forEach((b) => {
       b.onclick = () => {
         const t = $(b.dataset.now);
         t.value = WM.formatDate(new Date(), 'datetime');
         t.dataset.manual = '1';
         $(b.dataset.now.replace('text', 'type')).value = 'text';
-        readUI(); scheduleRender();
+        readUI(); scheduleRender(); saveParams();
       };
     });
     document.querySelectorAll('[data-filetime]').forEach((b) => {
@@ -601,7 +638,7 @@
         const d = (item && item.date) || new Date();
         $(b.dataset.filetime).value = WM.formatDate(d, 'datetime');
         $(b.dataset.filetime.replace('text', 'type')).value = 'text';
-        readUI(); scheduleRender();
+        readUI(); scheduleRender(); saveParams();
       };
     });
 
@@ -617,6 +654,7 @@
     // 恢复默认
     $('btnReset').onclick = () => {
       state.params = JSON.parse(JSON.stringify(WM.DEFAULTS));
+      clearSavedParams();                 // 同时清掉存档，刷新后也是默认值
       writeUI();
       scheduleRender();
       toast('已恢复默认参数');
@@ -646,16 +684,21 @@
       else if (e.key === 'ArrowUp') state.params.marginY = Math.max(0, state.params.marginY - step);
       else if (e.key === 'ArrowDown') state.params.marginY = Math.min(40, state.params.marginY + step);
       else used = false;
-      if (used) { e.preventDefault(); writeUI(); scheduleRender(); }
+      if (used) { e.preventDefault(); writeUI(); scheduleRender(); saveParams(); }
     });
   }
 
-  /* ---------------- 启动 ---------------- */
-  readUI();
+  /* ---------------- 启动 ----------------
+   * 顺序很重要：必须先把（可能是存档恢复的）参数写进控件，再读回来，
+   * 否则 readUI() 会把 HTML 里的默认值覆盖掉刚恢复的存档。 */
   writeUI();
+  readUI();
   syncQueue();
   bind();
-  window.addEventListener('beforeunload', () => state.items.forEach((it) => URL.revokeObjectURL(it.url)));
+  window.addEventListener('beforeunload', () => {
+    state.items.forEach((it) => URL.revokeObjectURL(it.url));
+    saveParams();                        // 关闭页面前落盘
+  });
 
   // 方便调试
   window.__freya = state;
