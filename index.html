@@ -135,6 +135,29 @@ body {
 
 output { color: var(--accent); font-variant-numeric: tabular-nums; }
 
+/* 可点击就地编辑的数值（output）：不新增元素，点击时原地换成同尺寸 input */
+output.editable {
+  cursor: text;
+  border-bottom: 1px dashed rgba(21, 167, 250, .5);
+  padding: 0 1px;
+}
+output.editable:hover { border-bottom-color: var(--accent); background: rgba(21, 167, 250, .10); }
+
+input.ctl-edit {
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  background: #0e1318;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0 3px;
+  height: 18px;
+  line-height: 16px;
+  text-align: right;
+  vertical-align: baseline;
+}
+
 input[type="text"], input[type="number"], textarea, select {
   width: 100%;
   background: #0e1318;
@@ -372,6 +395,26 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
         <label>顶部标题</label>
         <input type="text" id="title" value="南京云之宝智算中心" placeholder="例如：某某公司项目部">
       </div>
+      <div class="ctl grid2">
+        <div>
+          <label>标题字号 <output id="outTitleScale">100%</output></label>
+          <input type="range" id="titleFontScale" min="40" max="200" value="100">
+        </div>
+        <div>
+          <label>标题字高 <output id="outTitleHeight">100%</output></label>
+          <input type="range" id="titleHeightScale" min="50" max="200" value="100">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>标题行高 <output id="outTitleLineH">1.50</output></label>
+          <input type="range" id="titleLineHeightRatio" min="1" max="2.5" step="0.05" value="1.5">
+        </div>
+        <div>
+          <label>顶栏高度加成 <output id="outHeaderPad">180%</output></label>
+          <input type="range" id="headerPadRatio" min="120" max="320" value="180">
+        </div>
+      </div>
 
       <div class="ctl field">
         <div class="field-head">
@@ -468,12 +511,22 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
       </div>
       <div class="ctl grid2">
         <div>
-          <label>标题字距 <output id="outTitleLS">8</output>px</label>
-          <input type="range" id="titleLS" min="0" max="40" step="1" value="8">
+          <label>标题字距 <output id="outTitleLS">5</output>px</label>
+          <input type="range" id="titleLS" min="0" max="40" step="1" value="5">
         </div>
         <div>
           <label>正文字距 <output id="outBodyLS">0.00</output>em</label>
           <input type="range" id="bodyLS" min="-0.05" max="0.8" step="0.01" value="0">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>标签字距 <output id="outLabelLS">0.19</output>em</label>
+          <input type="range" id="labelLS" min="0" max="0.6" step="0.01" value="0.185">
+        </div>
+        <div>
+          <label>冒号后间距 <output id="outValueGap">0.20</output>em</label>
+          <input type="range" id="valueGapRatio" min="0" max="1.2" step="0.02" value="0.2">
         </div>
       </div>
       <div class="ctl grid2">
@@ -756,9 +809,14 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
 
     showTable: true,
     title: '南京云之宝智算中心',
-    titleLS: 8,             // 标题字距（**绝对像素**，不再按 em——否则字号一放大空隙同步变大）
-    titleFontScale: 1.2,    // 标题字号 = 跟随后的字号 ×1.2
+    titleLS: 5,             // 标题字距（**绝对像素**；放不下时自动继续收紧）
+    titleFontScale: 1.0,    // 标题字号 = 跟随后的字号 ×1.0（与行文字同高）
+    titleHeightScale: 1.0,  // 标题字形纵向拉伸：>1 变高（以行中心为锚点，居中不受影响）
+    titleLineHeightRatio: 1.5, // 标题行高 = 字号 ×1.5（与字号解耦：字号小而行高更高）
+    headerPadRatio: 1.8,    // 顶栏高 = 标题行高 ×1.8（上下留白按文字高度算）
     bodyLS: 0.0,
+    labelLS: 0.185,         // 标签内字间距（em）——参照水印相机 APP 实测 ≈0.185em
+    valueGapRatio: 0.20,    // 「标签」到「值」的间距 = 字号 ×倍率（APP 实测 ≈0.20em）
     labelW: 1.0,
     bodyFontScale: 1.2,     // 正文字高 = 参考字高 ×1.2（用户要求「字高 120%」）
     headerFontScale: null,  // null = 标题字号跟随正文倍率（标题属性跟随行文字）
@@ -786,7 +844,14 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     showCode: true,
     codeLen: 14,
     codeLabel: '防伪',
-    codeSize: 1.28
+    codeSize: 1.28,
+
+    /* 导出 / 视图设置（界面用；渲染引擎读到也不影响） */
+    format: 'image/jpeg',
+    quality: 92,
+    nameTpl: '{name}_watermark',
+    maxEdge: 0,
+    fitView: true
   };
 
   /* 比例常量（×base，base = 图片短边；全部取自参考图实测）
@@ -994,6 +1059,9 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       // 标题字距取「绝对值(px)」：按 em 算的话字号一放大空隙就同步变大（正是之前 18px 大缝的成因）
       t.titleLSpx = (p.titleLS == null ? 8 : p.titleLS) * s;
       t.bodyLSpx = t.fB * p.bodyLS;
+      // 标签内字距单独一个倍率（APP 实测比正文松），标签→值的间距单独一个倍率
+      t.labelLSpx = t.fB * (p.labelLS == null ? 0.185 : p.labelLS);
+      t.valueGap = t.fB * (p.valueGapRatio == null ? 0.20 : p.valueGapRatio);
 
       // 1) 表格宽度：保持参考图宽度比例（不因字高变化而加宽），
       //    仅当标题太长放不下时才按需放宽（上限 92% base）
@@ -1004,14 +1072,24 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       const titleNeed = measureLS(ctx, p.title || '', t.titleLSpx) + t.padX * 2 + t.dotX;
       t.w = clamp(Math.max(defW, minW, titleNeed), 0, Math.max(maxW, defW));
 
-      // 2) 正文折行宽度：标签列固定，值列占满表格剩余宽度（字高变大后少折行）
-      const labelW = base * M.labelColW * s * (p.labelW == null ? 1 : p.labelW);
-      t.labelW = labelW;
-      t.gap = base * M.labelGap * s;
+      // 2) 正文折行宽度：标签列先按参考宽度，装不下最长标签时再放宽，值列占满剩余宽度
       const bodyAvail = Math.max(t.fB * 4, t.w - t.bodyPadX * 2);
+      t.gap = t.valueGap;                       // 「标签→值」的间距（不再用固定的 M.labelGap）
+      ctx.font = lsFont(t.fB, p.fontFamily);
+      const labelW0 = base * M.labelColW * s * (p.labelW == null ? 1 : p.labelW);
+      let labelNeed = 0;
+      for (const r of rows) {
+        const lt = String(r.label || '');
+        if (lt) labelNeed = Math.max(labelNeed, measureLS(ctx, lt, t.labelLSpx));
+      }
+      // 至少给值列留 4 字宽度，避免标签列吃光整行
+      const room = Math.max(0, bodyAvail - t.fB * 4 - t.gap);
+      const labelW = labelNeed > labelW0
+        ? Math.min(labelNeed + t.fB * 0.06, Math.max(labelW0, room))
+        : labelW0;
+      t.labelW = labelW;
       const valueMax = Math.max(t.fB * 4, bodyAvail - labelW - t.gap);
 
-      ctx.font = lsFont(t.fB, p.fontFamily);
       const laid = [];
       let bodyNeed = 0;
       for (const r of rows) {
@@ -1020,7 +1098,7 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
         const lines = valueText ? wrapLS(ctx, valueText, valueMax, t.bodyLSpx) : [''];
         let maxW = 0;
         for (const l of lines) maxW = Math.max(maxW, measureLS(ctx, l, t.bodyLSpx));
-        laid.push({ labelText, valueText, lines, maxW, labelWpx: measureLS(ctx, labelText, t.bodyLSpx) });
+        laid.push({ labelText, valueText, lines, maxW, labelWpx: measureLS(ctx, labelText, t.labelLSpx) });
         bodyNeed = Math.max(bodyNeed, labelW + t.gap + Math.min(maxW, valueMax));
       }
       // 内容确实超宽时，把表格撑到刚好放得下
@@ -1032,21 +1110,39 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       t.labelEndX = t.bodyPadX + labelW;
       t.valueX = t.labelEndX + t.gap;
 
-      // 3) 标题折行（顶栏内居中，左侧为圆点预留空间）
-      ctx.font = lsFont(t.fH, p.fontFamily);
+      // 3) 标题折行（顶栏内居中，左侧为圆点预留空间）；
+      //    标题字号变大后可用宽度变窄，此时自动收紧字距，尽量保持单行
+      let titleLS = (p.titleLS == null ? 5 : p.titleLS) * s;
       const inner = t.w - t.padX * 2;
       const dotBlock = t.dotX + t.dotD / 2;
-      const titleAvail = Math.max(t.fH * 4, inner - dotBlock * 2);
+      // 左侧只为圆点预留「圆点本身 + 少量余量」，不再按整个圆点区间让位
+      // （留太多会让标题可用宽度过窄、动辄折行）
+      const dotReserve = Math.min(inner * 0.35, dotBlock + t.dotD * 0.8);
+      const titleAvail = Math.max(t.fH * 4, inner - dotReserve * 2);
+      const fitTitle = (ls) => {
+        let need = 0;
+        for (const ch of Array.from(p.title || '')) need += ctx.measureText(ch).width + ls;
+        return Math.max(0, need - ls);
+      };
+      if (Array.from(p.title || '').length > 1) {
+        for (let i = 0; i < 10 && fitTitle(titleLS) > titleAvail && titleLS > 0; i++) {
+          titleLS = Math.max(0, titleLS - Math.max(1, s));
+        }
+      }
+      t.titleLSpx = titleLS;
       t.titleLines = wrapLS(ctx, p.title || '', titleAvail, t.titleLSpx);
-      t.titleLineH = t.fH * 1.35;
+      // 标题行高单独一个倍率：可与字号解耦（字号调小、行高调大）
+      t.titleLineH = t.fH * (p.titleLineHeightRatio == null ? 1.5 : p.titleLineHeightRatio);
       t.dotBlock = dotBlock;
-      // 标题在「圆点之后到顶栏右侧」的区间内居中，再整体右移一点（参考图实测）
-      t.titleCenterX = dotBlock + (inner - dotBlock) / 2 + base * TITLE_NUDGE * s;
+      t.dotReserve = dotReserve;
+      // 标题在「圆点预留区之后到顶栏右侧」的区间内居中，再整体右移一点（参考图实测）
+      t.titleCenterX = dotReserve + (inner - dotReserve) / 2 + base * TITLE_NUDGE * s;
 
-      // 4) 顶栏高度：随标题字号等比放大（保持圆点/标题的视觉平衡），标题折行时再自动加高
-      const headScale = (p.titleFontScale == null ? 1 : p.titleFontScale);
+      // 4) 顶栏高度 = 标题行高 × 上下留白倍率（留白按文字高度算，不随字号无限放大）；
+      //    标题折行时按行数自动加高
+      const headPad = (p.headerPadRatio == null ? 1.8 : p.headerPadRatio);
       const headTextH = t.titleLines.length * t.titleLineH;
-      t.headerH = Math.max(base * M.headerH * s * headScale, headTextH);
+      t.headerH = Math.max(base * M.headerH * s, headTextH * headPad, headTextH);
 
       // 5) 行块高：内部行距 lineH，行与行之间再留 rowGap
       t.rows = laid.map((r) => Object.assign({}, r, {
@@ -1126,7 +1222,7 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     function scaleTable(t, k) {
       if (k >= 0.999) return;
       t.fB *= k; t.lineH *= k; t.rowGap *= k;
-      t.bodyLSpx *= k;
+      t.bodyLSpx *= k; t.labelLSpx *= k; t.valueGap *= k;
       t.padBodyTop *= k; t.padBottom *= k;
       t.padTop *= k; t.radius *= k;
       t.fH *= k; t.titleLSpx *= k; t.titleLineH *= k;
@@ -1134,6 +1230,10 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       t.rows.forEach((r) => { r.h *= k; });
       t.h *= k;
       t.bodyTop *= k;
+      // bodyPadX / labelW 等横向尺寸不随纵向缩放变化，但列位置缓存必须跟着重算，
+      // 否则 labelEndX 会停留在缩放前的值，与绘制时的实际位置不一致
+      t.labelEndX = t.bodyPadX + t.labelW;
+      t.valueX = t.labelEndX + t.gap;
     }
 
     /* 在「表格高度 + 防伪块高度 + 上下边距」超过图片高度时，求最大的等比缩放系数 */
@@ -1248,9 +1348,21 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       ctx.shadowBlur = t.fH * 0.14;
       ctx.shadowOffsetY = t.fH * 0.03;
       let ty = y + t.headerH / 2 - ((t.titleLines.length - 1) * t.titleLineH) / 2;
+      // 标题纵向拉伸：把字形拉高（宽度基本不变），并**以行中心为锚点**缩放，
+      // 这样居中排版在拉伸后依然居中（不会像左端锚点那样把整行推偏）
+      const hs = p.titleHeightScale == null ? 1 : Math.max(0.5, Math.min(2.5, p.titleHeightScale));
       for (const l of t.titleLines) {
         const lw = measureLS(ctx, l, t.titleLSpx);
-        fillLS(ctx, l, x + t.titleCenterX - lw / 2, ty, t.titleLSpx);
+        const cx = x + t.titleCenterX;
+        if (hs === 1) {
+          fillLS(ctx, l, cx - lw / 2, ty, t.titleLSpx);
+        } else {
+          ctx.save();
+          ctx.translate(cx, ty);          // 锚点 = 这一行的中心
+          ctx.scale(1, hs);               // 只压纵向：文字变高，横向排布不变
+          fillLS(ctx, l, -lw / 2, 0, t.titleLSpx);
+          ctx.restore();
+        }
         ty += t.titleLineH;
       }
       ctx.restore();
@@ -1274,7 +1386,7 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
           ctx.fillStyle = p.textColor;
         }
         const firstMid = ry + t.lineH / 2;
-        if (row.labelText) fillLS(ctx, row.labelText, labelX, firstMid, t.bodyLSpx);
+        if (row.labelText) fillLS(ctx, row.labelText, labelX, firstMid, t.labelLSpx);
         let ly = firstMid;
         for (const l of row.lines) {
           if (l) fillLS(ctx, l, valueX, ly, t.bodyLSpx);
@@ -1558,8 +1670,70 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
 
   /* ---------------- 参数 ↔ 界面 ---------------- */
   const CONTROL_IDS = ['scale', 'marginX', 'marginY', 'opacity', 'tableOpacity', 'title', 'titleLS', 'bodyLS',
+    'labelLS', 'valueGapRatio', 'titleFontScale', 'titleHeightScale', 'titleLineHeightRatio', 'headerPadRatio',
     'labelW', 'accent', 'dotColor', 'bgColor', 'textColor', 'fontFamily', 'radius', 'shadow',
     'showTable', 'showLogo', 'logoScale', 'showCode', 'codeLen', 'codeLabel', 'codeSize'];
+
+  /* 导出/视图设置：也纳入持久化（面板上「全部数据」都要存） */
+  const EXPORT_IDS = ['format', 'quality', 'nameTpl', 'maxEdge', 'fitView'];
+
+  /* 让已有的 <output> 数值「点一下就地编辑」——不新增任何元素，排版不会变。
+   * 编辑时把 output 临时换成同尺寸的 input，提交后还原成 output（格式由 readUI 负责回填）。
+   * 取值范围来自同一个 .ctl 里的滑块，超范围自动夹取。 */
+  function bindOutputEditing() {
+    document.querySelectorAll('output').forEach((out) => {
+      if (out.dataset.editable) return;
+      const ctl = out.closest('.ctl');
+      const slider = ctl && ctl.querySelector('input[type="range"]');
+      if (!slider || !slider.id) return;      // 只有绑定到滑块的 output 才可编辑
+      out.dataset.editable = '1';
+      out.title = '点击可直接输入数值';
+      out.classList.add('editable');
+
+      const commit = (raw, prevText) => {
+        const v = parseFloat(String(raw).replace('%', '').trim());
+        if (isFinite(v)) {
+          slider.value = String(v);            // 交给浏览器按 min/max/step 夹取
+          // 触发既有链路：readUI 会把 output 文本重写成新值（含 % / 小数位格式）
+          slider.dispatchEvent(new Event('input', { bubbles: true }));
+          slider.dispatchEvent(new Event('change', { bubbles: true }));
+          ctl.querySelector('input.ctl-edit')?.replaceWith(out);
+        } else {
+          ctl.querySelector('input.ctl-edit')?.replaceWith(out);
+          out.textContent = prevText;          // 非法输入 → 还原成原文本
+        }
+        out.dataset.editing = '';
+      };
+
+      out.addEventListener('mousedown', (e) => e.preventDefault());  // 避免抢焦点
+      out.addEventListener('click', () => {
+        if (out.dataset.editing) return;
+        out.dataset.editing = '1';
+        const prevText = out.textContent;
+
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'ctl-edit';
+        inp.value = String(prevText).replace('%', '');
+        inp.style.width = Math.max(30, String(prevText).length * 8 + 14) + 'px';
+        out.replaceWith(inp);                  // 原地同尺寸替换：label 长度不变、排版不动
+        inp.focus();
+        inp.select();
+
+        let done = false;
+        const finish = (ok) => {
+          if (done) return;
+          done = true;
+          commit(ok ? inp.value : null, prevText);
+        };
+        inp.addEventListener('blur', () => finish(true));
+        inp.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+          else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+        });
+      });
+    });
+  }
 
   const ROW_IDS = [1, 2, 3].map((i) => ({
     on: 'r' + i + 'on', label: 'r' + i + 'label', type: 'r' + i + 'type', text: 'r' + i + 'text', idx: i - 1
@@ -1575,6 +1749,12 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     p.title = $('title').value;
     p.titleLS = +$('titleLS').value;
     p.bodyLS = +$('bodyLS').value;
+    p.labelLS = +$('labelLS').value;
+    p.valueGapRatio = +$('valueGapRatio').value;
+    p.titleFontScale = +$('titleFontScale').value / 100;
+    p.titleHeightScale = +$('titleHeightScale').value / 100;
+    p.titleLineHeightRatio = +$('titleLineHeightRatio').value;
+    p.headerPadRatio = +$('headerPadRatio').value / 100;
     p.labelW = +$('labelW').value / 100;    p.accent = $('accent').value;
     p.dotColor = $('dotColor').value;
     p.bgColor = $('bgColor').value;
@@ -1597,6 +1777,13 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       text: $(r.text).value
     }));
 
+    // 导出 / 视图设置（同样持久化）
+    p.format = $('format').value;
+    p.quality = +$('quality').value;
+    p.nameTpl = $('nameTpl').value;
+    p.maxEdge = +$('maxEdge').value || 0;
+    p.fitView = $('fitView').checked;
+
     // 数值回显
     $('outScale').textContent = $('scale').value + '%';
     $('outMarginX').textContent = (+$('marginX').value).toFixed(1) + '%';
@@ -1606,6 +1793,12 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     $('outLabelW').textContent = $('labelW').value + '%';
     $('outTitleLS').textContent = (+$('titleLS').value).toFixed(2);
     $('outBodyLS').textContent = (+$('bodyLS').value).toFixed(2);
+    $('outLabelLS').textContent = (+$('labelLS').value).toFixed(2);
+    $('outValueGap').textContent = (+$('valueGapRatio').value).toFixed(2);
+    $('outTitleScale').textContent = $('titleFontScale').value + '%';
+    $('outTitleHeight').textContent = $('titleHeightScale').value + '%';
+    $('outTitleLineH').textContent = (+$('titleLineHeightRatio').value).toFixed(2);
+    $('outHeaderPad').textContent = $('headerPadRatio').value + '%';
     $('outRadius').textContent = $('radius').value;
     $('outShadow').textContent = $('shadow').value + '%';
     $('outLogoScale').textContent = $('logoScale').value + '%';
@@ -1628,6 +1821,12 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     $('title').value = p.title;
     $('titleLS').value = p.titleLS;
     $('bodyLS').value = p.bodyLS;
+    $('labelLS').value = p.labelLS == null ? 0.185 : p.labelLS;
+    $('valueGapRatio').value = p.valueGapRatio == null ? 0.2 : p.valueGapRatio;
+    $('titleFontScale').value = Math.round((p.titleFontScale == null ? 1 : p.titleFontScale) * 100);
+    $('titleHeightScale').value = Math.round((p.titleHeightScale == null ? 1 : p.titleHeightScale) * 100);
+    $('titleLineHeightRatio').value = p.titleLineHeightRatio == null ? 1.5 : p.titleLineHeightRatio;
+    $('headerPadRatio').value = Math.round((p.headerPadRatio == null ? 1.8 : p.headerPadRatio) * 100);
     $('labelW').value = Math.round((p.labelW == null ? 1 : p.labelW) * 100);
     $('accent').value = p.accent;
     $('dotColor').value = p.dotColor;
@@ -1650,6 +1849,12 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       $(r.type).value = row.type || 'text';
       $(r.text).value = row.text || '';
     });
+    // 导出 / 视图设置（缺省时回落到 HTML 初值）
+    if (p.format != null) $('format').value = p.format;
+    if (p.quality != null) $('quality').value = p.quality;
+    if (p.nameTpl != null) $('nameTpl').value = p.nameTpl;
+    if (p.maxEdge != null) $('maxEdge').value = p.maxEdge;
+    if (p.fitView != null) $('fitView').checked = !!p.fitView;
     readUI();
     document.querySelectorAll('#segPos button').forEach((b) => b.classList.toggle('active', b.dataset.pos === p.position));
   }
@@ -1973,7 +2178,7 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       if (items && items.length) addFiles(items);
     });
 
-    // 位置
+    // 位置（segPos）
     document.querySelectorAll('#segPos button').forEach((b) => {
       b.onclick = () => {
         state.params.position = b.dataset.pos;
@@ -1989,6 +2194,13 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       if (!el) return;
       el.addEventListener('input', () => { readUI(); scheduleRender(); saveParams(); });
       el.addEventListener('change', () => { readUI(); scheduleRender(); saveParams(); });
+    });
+    // 导出 / 视图设置也持久化
+    EXPORT_IDS.forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener('change', () => { readUI(); saveParams(); });
+      el.addEventListener('input', () => { readUI(); saveParams(); });
     });
     ROW_IDS.forEach((r) => {
       [r.on, r.label, r.type, r.text].forEach((id) => {
@@ -2069,6 +2281,7 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
    * 否则 readUI() 会把 HTML 里的默认值覆盖掉刚恢复的存档。 */
   writeUI();
   readUI();
+  bindOutputEditing();   // 让 output 数值可点击就地编辑
   syncQueue();
   bind();
   window.addEventListener('beforeunload', () => {

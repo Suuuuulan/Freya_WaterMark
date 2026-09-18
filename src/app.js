@@ -182,8 +182,70 @@
 
   /* ---------------- 参数 ↔ 界面 ---------------- */
   const CONTROL_IDS = ['scale', 'marginX', 'marginY', 'opacity', 'tableOpacity', 'title', 'titleLS', 'bodyLS',
+    'labelLS', 'valueGapRatio', 'titleFontScale', 'titleHeightScale', 'titleLineHeightRatio', 'headerPadRatio',
     'labelW', 'accent', 'dotColor', 'bgColor', 'textColor', 'fontFamily', 'radius', 'shadow',
     'showTable', 'showLogo', 'logoScale', 'showCode', 'codeLen', 'codeLabel', 'codeSize'];
+
+  /* 导出/视图设置：也纳入持久化（面板上「全部数据」都要存） */
+  const EXPORT_IDS = ['format', 'quality', 'nameTpl', 'maxEdge', 'fitView'];
+
+  /* 让已有的 <output> 数值「点一下就地编辑」——不新增任何元素，排版不会变。
+   * 编辑时把 output 临时换成同尺寸的 input，提交后还原成 output（格式由 readUI 负责回填）。
+   * 取值范围来自同一个 .ctl 里的滑块，超范围自动夹取。 */
+  function bindOutputEditing() {
+    document.querySelectorAll('output').forEach((out) => {
+      if (out.dataset.editable) return;
+      const ctl = out.closest('.ctl');
+      const slider = ctl && ctl.querySelector('input[type="range"]');
+      if (!slider || !slider.id) return;      // 只有绑定到滑块的 output 才可编辑
+      out.dataset.editable = '1';
+      out.title = '点击可直接输入数值';
+      out.classList.add('editable');
+
+      const commit = (raw, prevText) => {
+        const v = parseFloat(String(raw).replace('%', '').trim());
+        if (isFinite(v)) {
+          slider.value = String(v);            // 交给浏览器按 min/max/step 夹取
+          // 触发既有链路：readUI 会把 output 文本重写成新值（含 % / 小数位格式）
+          slider.dispatchEvent(new Event('input', { bubbles: true }));
+          slider.dispatchEvent(new Event('change', { bubbles: true }));
+          ctl.querySelector('input.ctl-edit')?.replaceWith(out);
+        } else {
+          ctl.querySelector('input.ctl-edit')?.replaceWith(out);
+          out.textContent = prevText;          // 非法输入 → 还原成原文本
+        }
+        out.dataset.editing = '';
+      };
+
+      out.addEventListener('mousedown', (e) => e.preventDefault());  // 避免抢焦点
+      out.addEventListener('click', () => {
+        if (out.dataset.editing) return;
+        out.dataset.editing = '1';
+        const prevText = out.textContent;
+
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'ctl-edit';
+        inp.value = String(prevText).replace('%', '');
+        inp.style.width = Math.max(30, String(prevText).length * 8 + 14) + 'px';
+        out.replaceWith(inp);                  // 原地同尺寸替换：label 长度不变、排版不动
+        inp.focus();
+        inp.select();
+
+        let done = false;
+        const finish = (ok) => {
+          if (done) return;
+          done = true;
+          commit(ok ? inp.value : null, prevText);
+        };
+        inp.addEventListener('blur', () => finish(true));
+        inp.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+          else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+        });
+      });
+    });
+  }
 
   const ROW_IDS = [1, 2, 3].map((i) => ({
     on: 'r' + i + 'on', label: 'r' + i + 'label', type: 'r' + i + 'type', text: 'r' + i + 'text', idx: i - 1
@@ -199,6 +261,12 @@
     p.title = $('title').value;
     p.titleLS = +$('titleLS').value;
     p.bodyLS = +$('bodyLS').value;
+    p.labelLS = +$('labelLS').value;
+    p.valueGapRatio = +$('valueGapRatio').value;
+    p.titleFontScale = +$('titleFontScale').value / 100;
+    p.titleHeightScale = +$('titleHeightScale').value / 100;
+    p.titleLineHeightRatio = +$('titleLineHeightRatio').value;
+    p.headerPadRatio = +$('headerPadRatio').value / 100;
     p.labelW = +$('labelW').value / 100;    p.accent = $('accent').value;
     p.dotColor = $('dotColor').value;
     p.bgColor = $('bgColor').value;
@@ -221,6 +289,13 @@
       text: $(r.text).value
     }));
 
+    // 导出 / 视图设置（同样持久化）
+    p.format = $('format').value;
+    p.quality = +$('quality').value;
+    p.nameTpl = $('nameTpl').value;
+    p.maxEdge = +$('maxEdge').value || 0;
+    p.fitView = $('fitView').checked;
+
     // 数值回显
     $('outScale').textContent = $('scale').value + '%';
     $('outMarginX').textContent = (+$('marginX').value).toFixed(1) + '%';
@@ -230,6 +305,12 @@
     $('outLabelW').textContent = $('labelW').value + '%';
     $('outTitleLS').textContent = (+$('titleLS').value).toFixed(2);
     $('outBodyLS').textContent = (+$('bodyLS').value).toFixed(2);
+    $('outLabelLS').textContent = (+$('labelLS').value).toFixed(2);
+    $('outValueGap').textContent = (+$('valueGapRatio').value).toFixed(2);
+    $('outTitleScale').textContent = $('titleFontScale').value + '%';
+    $('outTitleHeight').textContent = $('titleHeightScale').value + '%';
+    $('outTitleLineH').textContent = (+$('titleLineHeightRatio').value).toFixed(2);
+    $('outHeaderPad').textContent = $('headerPadRatio').value + '%';
     $('outRadius').textContent = $('radius').value;
     $('outShadow').textContent = $('shadow').value + '%';
     $('outLogoScale').textContent = $('logoScale').value + '%';
@@ -252,6 +333,12 @@
     $('title').value = p.title;
     $('titleLS').value = p.titleLS;
     $('bodyLS').value = p.bodyLS;
+    $('labelLS').value = p.labelLS == null ? 0.185 : p.labelLS;
+    $('valueGapRatio').value = p.valueGapRatio == null ? 0.2 : p.valueGapRatio;
+    $('titleFontScale').value = Math.round((p.titleFontScale == null ? 1 : p.titleFontScale) * 100);
+    $('titleHeightScale').value = Math.round((p.titleHeightScale == null ? 1 : p.titleHeightScale) * 100);
+    $('titleLineHeightRatio').value = p.titleLineHeightRatio == null ? 1.5 : p.titleLineHeightRatio;
+    $('headerPadRatio').value = Math.round((p.headerPadRatio == null ? 1.8 : p.headerPadRatio) * 100);
     $('labelW').value = Math.round((p.labelW == null ? 1 : p.labelW) * 100);
     $('accent').value = p.accent;
     $('dotColor').value = p.dotColor;
@@ -274,6 +361,12 @@
       $(r.type).value = row.type || 'text';
       $(r.text).value = row.text || '';
     });
+    // 导出 / 视图设置（缺省时回落到 HTML 初值）
+    if (p.format != null) $('format').value = p.format;
+    if (p.quality != null) $('quality').value = p.quality;
+    if (p.nameTpl != null) $('nameTpl').value = p.nameTpl;
+    if (p.maxEdge != null) $('maxEdge').value = p.maxEdge;
+    if (p.fitView != null) $('fitView').checked = !!p.fitView;
     readUI();
     document.querySelectorAll('#segPos button').forEach((b) => b.classList.toggle('active', b.dataset.pos === p.position));
   }
@@ -597,7 +690,7 @@
       if (items && items.length) addFiles(items);
     });
 
-    // 位置
+    // 位置（segPos）
     document.querySelectorAll('#segPos button').forEach((b) => {
       b.onclick = () => {
         state.params.position = b.dataset.pos;
@@ -613,6 +706,13 @@
       if (!el) return;
       el.addEventListener('input', () => { readUI(); scheduleRender(); saveParams(); });
       el.addEventListener('change', () => { readUI(); scheduleRender(); saveParams(); });
+    });
+    // 导出 / 视图设置也持久化
+    EXPORT_IDS.forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener('change', () => { readUI(); saveParams(); });
+      el.addEventListener('input', () => { readUI(); saveParams(); });
     });
     ROW_IDS.forEach((r) => {
       [r.on, r.label, r.type, r.text].forEach((id) => {
@@ -693,6 +793,7 @@
    * 否则 readUI() 会把 HTML 里的默认值覆盖掉刚恢复的存档。 */
   writeUI();
   readUI();
+  bindOutputEditing();   // 让 output 数值可点击就地编辑
   syncQueue();
   bind();
   window.addEventListener('beforeunload', () => {

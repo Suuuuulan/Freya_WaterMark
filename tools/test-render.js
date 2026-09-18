@@ -36,6 +36,7 @@ function makeRecorder() {
       ops.push(['restore']);
     },
     translate(x, y) { ops.push(['translate', x, y]); },
+    scale(x, y) { ops.push(['scale', x, y]); },
     rotate(a) { ops.push(['rotate', a]); },
     setTransform() {}, clearRect() {},
     beginPath() { ops.push(['beginPath']); },
@@ -123,8 +124,15 @@ setTimeout(() => {
     'got ' + res.h.toFixed(1) + ' 期望 ' + derivedH.toFixed(1));
   const y = res.y;
   check('表格底边距 ≈ 40（参考 40）', near(H - (y + res.h), 40, 5), 'got ' + (H - y - res.h).toFixed(1));
-  check('顶栏高度随标题字号等比放大', near(res.metrics.headerH, 96 * WM.DEFAULTS.titleFontScale, 2),
-    'got ' + res.metrics.headerH.toFixed(1) + ' 期望 ' + (96 * WM.DEFAULTS.titleFontScale).toFixed(1));
+  check('顶栏高度 = 标题行高 ×headerPadRatio（留白按文字高度）',
+    near(res.metrics.headerH, res.metrics.titleLineH * WM.DEFAULTS.headerPadRatio, 2),
+    'got ' + res.metrics.headerH.toFixed(1) + ' 期望 ' +
+    (res.metrics.titleLineH * WM.DEFAULTS.headerPadRatio).toFixed(1));
+  check('标题行高与字号解耦（= 字号 ×titleLineHeightRatio）',
+    near(res.metrics.titleLineH, res.metrics.fH * WM.DEFAULTS.titleLineHeightRatio, 0.5),
+    'titleLineH=' + res.metrics.titleLineH.toFixed(1) + ' fH=' + res.metrics.fH.toFixed(1));
+  check('顶栏比标题行高更舒展', res.metrics.headerH > res.metrics.titleLineH,
+    '顶栏=' + res.metrics.headerH.toFixed(1) + ' 标题行高=' + res.metrics.titleLineH.toFixed(1));
   check('标题竖直方向留有余量（不裁切）', res.metrics.headerH >= res.metrics.titleLineH,
     '顶栏=' + res.metrics.headerH.toFixed(1) + ' 标题行高=' + res.metrics.titleLineH.toFixed(1));
   check('正文字高 = 参考字高 ×1.2（120%）', near(res.metrics.fB, BASE * WM.M.bodyFont * 1.2, 0.5),
@@ -155,15 +163,34 @@ setTimeout(() => {
   const expectTitleCx = res.x + res.metrics.titleCenterX;
   check('标题中心 = 引擎 titleCenterX', near((titleMinX + titleMaxX + fH) / 2, expectTitleCx, 12),
     'got ' + ((titleMinX + titleMaxX + fH) / 2).toFixed(1) + ' 期望 ' + expectTitleCx.toFixed(1));
-  check('标题宽度随字号放大（含字距）', near(titleW, 646, 80),
-    'got ' + titleW.toFixed(1) + ' 期望 ≈646');
+  check('标题宽度随字号放大（含字距）', near(titleW, 515, 70),
+    'got ' + titleW.toFixed(1) + ' 期望 ≈515');
   // 字距：绝对值 8px（不随字号放大而变宽），且标题总宽必须装得进表格
   check('标题字距为绝对值 px（不随字号等比放大）', near(res.metrics.titleLSpx, WM.DEFAULTS.titleLS, 0.5),
     'titleLSpx=' + res.metrics.titleLSpx.toFixed(2) + ' 期望 ' + WM.DEFAULTS.titleLS);
-  check('标题总宽装得进顶栏（除圆点区）',
-    titleW <= res.w - res.metrics.padX * 2 - res.metrics.dotBlock + 1,
-    '标题=' + titleW.toFixed(1) + ' 可用≈' + (res.w - res.metrics.padX * 2 - res.metrics.dotBlock).toFixed(1));
-  check('标题字号 = 跟随后再 ×1.2', near(res.metrics.fH, BASE * WM.M.headerFont * WM.DEFAULTS.bodyFontScale * WM.DEFAULTS.titleFontScale, 0.6),
+  check('标题总宽装得进顶栏（除圆点预留区）',
+    titleW <= res.w - res.metrics.padX * 2 - res.metrics.dotReserve * 2 + 1,
+    '标题=' + titleW.toFixed(1) + ' 可用≈' + (res.w - res.metrics.padX * 2 - res.metrics.dotReserve * 2).toFixed(1));
+  check('标题字号 = 跟随后再 ×titleFontScale', near(res.metrics.fH, BASE * WM.M.headerFont * WM.DEFAULTS.bodyFontScale * WM.DEFAULTS.titleFontScale, 0.6),
+    'fH=' + res.metrics.fH.toFixed(1));
+  // 标题纵向拉伸：>1 时 translate 到行中心、scale(1,hs) 只压纵向 → 居中不受影响
+  const cH = makeRecorder();
+  r.draw(cH, Object.assign({}, p, { titleHeightScale: 1.4 }), W, H, BASE, rows);
+  const sc = cH.ops.filter((o) => o[0] === 'scale');
+  const tr = cH.ops.filter((o) => o[0] === 'translate');
+  check('标题字高>1 时按 scale(1,hs) 只压纵向',
+    sc.length === 1 && sc[0][1] === 1 && Math.abs(sc[0][2] - 1.4) < 1e-9,
+    'scale ops=' + JSON.stringify(sc));
+  check('缩放锚点 = 行中心（居中排版不跑偏）',
+    tr.length === 1 && near(tr[0][1], res.x + res.metrics.titleCenterX, 0.5),
+    'anchor=' + JSON.stringify(tr) + ' 期望x=' + (res.x + res.metrics.titleCenterX).toFixed(1));
+  const cH1 = makeRecorder();
+  r.draw(cH1, p, W, H, BASE, rows);
+  check('标题字高=1 时不产生额外 scale（直绘）',
+    cH1.ops.filter((o) => o[0] === 'scale').length === 0,
+    'scale ops=' + cH1.ops.filter((o) => o[0] === 'scale').length);
+  check('纵向拉伸不改变横向排布（锚点与结构字号不变）',
+    near(res.metrics.fH, BASE * WM.M.headerFont * WM.DEFAULTS.bodyFontScale * WM.DEFAULTS.titleFontScale, 0.6),
     'fH=' + res.metrics.fH.toFixed(1));
   const whiteTitles = title.filter((o) => o[4] === '#ffffff');
   check('标题为白色', whiteTitles.length === 9, 'got ' + whiteTitles.length + ' fillStyle=' + (title[0] && title[0][4]));
@@ -188,19 +215,29 @@ setTimeout(() => {
     check('时间值起始 x = 表格左 + valueX', near(Math.min(...row1Value.map((o) => o[2])), valueStartX, 1),
       'got ' + Math.min(...row1Value.map((o) => o[2])).toFixed(1) + ' 期望 ' + valueStartX.toFixed(1));
   }
+  // 标签字形：用 valueX 作为标签/值分界，避免把时间里的 ":" 当成标签字符
   const row1Label = row1.filter((o) => o[2] < valueStartX - 1 && '拍摄时间:'.indexOf(o[1]) >= 0);
-  check('标签 5 个字被绘制', row1Label.length === 5, 'got ' + row1Label.length + ' → ' + row1Label.map((o) => o[1]).join(''));
+  check('标签 5 个字被绘制', row1Label.length === 5,
+    'got ' + row1Label.length + ' → ' + row1Label.map((o) => o[1]).join(''));
   if (row1Label.length) {
-    const labelLeft = Math.min(...row1Label.map((o) => o[2]));
-    const labelRight = Math.max(...row1Label.map((o) => o[2])) + res.metrics.fB;
-    check('标签左边界 = 60（参考 60）', near(labelLeft, 60, 1));
-    // 标签文字应在标签列内，且列宽容得下最长标签
-    const colRight = res.x + res.metrics.labelEndX;
-    check('标签文字在标签列内且不超过列宽', labelRight > labelLeft && labelRight <= colRight + 1,
-      'ink=' + labelLeft.toFixed(1) + '..' + labelRight.toFixed(1) + ' 列右边界=' + colRight.toFixed(1));
-    check('标签列宽度容得下最长标签', res.metrics.labelW >= res.metrics.rows[0].labelWpx - res.metrics.bodyLSpx,
-      'labelW=' + res.metrics.labelW.toFixed(1) + ' 需要 ' + res.metrics.rows[0].labelWpx.toFixed(1));
+    check('标签左边界 = 60（参考 60）', near(Math.min(...row1Label.map((o) => o[2])), 60, 1));
   }
+  // 标签列必须装得下最长标签（用引擎的实测宽度判定，比按像素外推可靠）
+  const widest = Math.max(...res.metrics.rows.map((r) => r.labelWpx));
+  check('标签列宽度容得下最长标签', res.metrics.labelW >= widest,
+    'labelW=' + res.metrics.labelW.toFixed(1) + ' 需要=' + widest.toFixed(1));
+  check('标签列 + 间距 + 值列 = 表格正文宽度',
+    near(res.metrics.labelW + res.metrics.gap + res.metrics.valueW, res.metrics.bodyW, 0.5),
+    'labelW+gap+valueW=' + (res.metrics.labelW + res.metrics.gap + res.metrics.valueW).toFixed(2) +
+    ' bodyW=' + res.metrics.bodyW.toFixed(2));
+  // 标签内字距 与 标签→值间距：都应与字号成固定比例（参照 APP 实测）
+  check('标签内字距 = 字号 ×labelLS', near(res.metrics.labelLSpx, fB * WM.DEFAULTS.labelLS, 0.2),
+    'got ' + res.metrics.labelLSpx.toFixed(2) + ' 期望 ' + (fB * WM.DEFAULTS.labelLS).toFixed(2));
+  check('标签→值间距 = 字号 ×valueGapRatio（比旧版大幅收紧）',
+    near(res.metrics.gap, fB * WM.DEFAULTS.valueGapRatio, 0.2) && res.metrics.gap < 15,
+    'got ' + res.metrics.gap.toFixed(2) + ' 期望 ' + (fB * WM.DEFAULTS.valueGapRatio).toFixed(2));
+  check('值列起始 = 标签列结束 + 间距', near(res.metrics.valueX, res.metrics.labelEndX + res.metrics.gap, 0.01),
+    'valueX=' + res.metrics.valueX.toFixed(2));
 
   console.log('\n3.4) 新增默认值与联动');
   check('圆角默认 16/1000', WM.DEFAULTS.radius === 0.016, 'radius=' + WM.DEFAULTS.radius);

@@ -79,6 +79,26 @@
         <label>顶部标题</label>
         <input type="text" id="title" value="南京云之宝智算中心" placeholder="例如：某某公司项目部">
       </div>
+      <div class="ctl grid2">
+        <div>
+          <label>标题字号 <output id="outTitleScale">100%</output></label>
+          <input type="range" id="titleFontScale" min="40" max="200" value="100">
+        </div>
+        <div>
+          <label>标题字高 <output id="outTitleHeight">100%</output></label>
+          <input type="range" id="titleHeightScale" min="50" max="200" value="100">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>标题行高 <output id="outTitleLineH">1.50</output></label>
+          <input type="range" id="titleLineHeightRatio" min="1" max="2.5" step="0.05" value="1.5">
+        </div>
+        <div>
+          <label>顶栏高度加成 <output id="outHeaderPad">180%</output></label>
+          <input type="range" id="headerPadRatio" min="120" max="320" value="180">
+        </div>
+      </div>
 
       <div class="ctl field">
         <div class="field-head">
@@ -175,12 +195,22 @@
       </div>
       <div class="ctl grid2">
         <div>
-          <label>标题字距 <output id="outTitleLS">8</output>px</label>
-          <input type="range" id="titleLS" min="0" max="40" step="1" value="8">
+          <label>标题字距 <output id="outTitleLS">5</output>px</label>
+          <input type="range" id="titleLS" min="0" max="40" step="1" value="5">
         </div>
         <div>
           <label>正文字距 <output id="outBodyLS">0.00</output>em</label>
           <input type="range" id="bodyLS" min="-0.05" max="0.8" step="0.01" value="0">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>标签字距 <output id="outLabelLS">0.19</output>em</label>
+          <input type="range" id="labelLS" min="0" max="0.6" step="0.01" value="0.185">
+        </div>
+        <div>
+          <label>冒号后间距 <output id="outValueGap">0.20</output>em</label>
+          <input type="range" id="valueGapRatio" min="0" max="1.2" step="0.02" value="0.2">
         </div>
       </div>
       <div class="ctl grid2">

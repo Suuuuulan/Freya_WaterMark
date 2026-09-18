@@ -36,7 +36,7 @@ function makeCtx() {
       return { width: w };
     },
     fillText() {}, beginPath() {}, moveTo() {}, lineTo() {}, arcTo() {}, closePath() {},
-    rect() {}, clip() {}, fill() {}, save() {}, restore() {}, translate() {}, rotate() {},
+    rect() {}, clip() {}, fill() {}, save() {}, restore() {}, translate() {}, scale() {}, rotate() {},
     fillRect() {}, drawImage() {}, createLinearGradient: () => ({ addColorStop() {} }),
     createRadialGradient: () => ({ addColorStop() {} }), setTransform() {}, clearRect() {}
   };

@@ -32,7 +32,7 @@ function makeCtx() {
     save: noop, restore: noop, setTransform: noop, clearRect: noop,
     beginPath: noop, moveTo: noop, lineTo: noop, arcTo: noop, closePath: noop,
     rect: noop, arc: noop, clip: noop, fill: noop, fillRect: noop, drawImage: noop,
-    translate: noop, rotate: noop,
+    translate: noop, scale: noop, rotate: noop,
     createLinearGradient: () => ({ addColorStop: noop }),
     createRadialGradient: () => ({ addColorStop: noop }),
     fillText(t, x, y) { ops.push({ t: String(t), x, y, size, font: fontStr, color: String(ctx.fillStyle) }); },

@@ -127,6 +127,29 @@ body {
 
 output { color: var(--accent); font-variant-numeric: tabular-nums; }
 
+/* 可点击就地编辑的数值（output）：不新增元素，点击时原地换成同尺寸 input */
+output.editable {
+  cursor: text;
+  border-bottom: 1px dashed rgba(21, 167, 250, .5);
+  padding: 0 1px;
+}
+output.editable:hover { border-bottom-color: var(--accent); background: rgba(21, 167, 250, .10); }
+
+input.ctl-edit {
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  background: #0e1318;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0 3px;
+  height: 18px;
+  line-height: 16px;
+  text-align: right;
+  vertical-align: baseline;
+}
+
 input[type="text"], input[type="number"], textarea, select {
   width: 100%;
   background: #0e1318;

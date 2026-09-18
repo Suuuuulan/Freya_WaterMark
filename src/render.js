@@ -24,9 +24,14 @@
 
     showTable: true,
     title: '南京云之宝智算中心',
-    titleLS: 8,             // 标题字距（**绝对像素**，不再按 em——否则字号一放大空隙同步变大）
-    titleFontScale: 1.2,    // 标题字号 = 跟随后的字号 ×1.2
+    titleLS: 5,             // 标题字距（**绝对像素**；放不下时自动继续收紧）
+    titleFontScale: 1.0,    // 标题字号 = 跟随后的字号 ×1.0（与行文字同高）
+    titleHeightScale: 1.0,  // 标题字形纵向拉伸：>1 变高（以行中心为锚点，居中不受影响）
+    titleLineHeightRatio: 1.5, // 标题行高 = 字号 ×1.5（与字号解耦：字号小而行高更高）
+    headerPadRatio: 1.8,    // 顶栏高 = 标题行高 ×1.8（上下留白按文字高度算）
     bodyLS: 0.0,
+    labelLS: 0.185,         // 标签内字间距（em）——参照水印相机 APP 实测 ≈0.185em
+    valueGapRatio: 0.20,    // 「标签」到「值」的间距 = 字号 ×倍率（APP 实测 ≈0.20em）
     labelW: 1.0,
     bodyFontScale: 1.2,     // 正文字高 = 参考字高 ×1.2（用户要求「字高 120%」）
     headerFontScale: null,  // null = 标题字号跟随正文倍率（标题属性跟随行文字）
@@ -54,7 +59,14 @@
     showCode: true,
     codeLen: 14,
     codeLabel: '防伪',
-    codeSize: 1.28
+    codeSize: 1.28,
+
+    /* 导出 / 视图设置（界面用；渲染引擎读到也不影响） */
+    format: 'image/jpeg',
+    quality: 92,
+    nameTpl: '{name}_watermark',
+    maxEdge: 0,
+    fitView: true
   };
 
   /* 比例常量（×base，base = 图片短边；全部取自参考图实测）
@@ -262,6 +274,9 @@
       // 标题字距取「绝对值(px)」：按 em 算的话字号一放大空隙就同步变大（正是之前 18px 大缝的成因）
       t.titleLSpx = (p.titleLS == null ? 8 : p.titleLS) * s;
       t.bodyLSpx = t.fB * p.bodyLS;
+      // 标签内字距单独一个倍率（APP 实测比正文松），标签→值的间距单独一个倍率
+      t.labelLSpx = t.fB * (p.labelLS == null ? 0.185 : p.labelLS);
+      t.valueGap = t.fB * (p.valueGapRatio == null ? 0.20 : p.valueGapRatio);
 
       // 1) 表格宽度：保持参考图宽度比例（不因字高变化而加宽），
       //    仅当标题太长放不下时才按需放宽（上限 92% base）
@@ -272,14 +287,24 @@
       const titleNeed = measureLS(ctx, p.title || '', t.titleLSpx) + t.padX * 2 + t.dotX;
       t.w = clamp(Math.max(defW, minW, titleNeed), 0, Math.max(maxW, defW));
 
-      // 2) 正文折行宽度：标签列固定，值列占满表格剩余宽度（字高变大后少折行）
-      const labelW = base * M.labelColW * s * (p.labelW == null ? 1 : p.labelW);
-      t.labelW = labelW;
-      t.gap = base * M.labelGap * s;
+      // 2) 正文折行宽度：标签列先按参考宽度，装不下最长标签时再放宽，值列占满剩余宽度
       const bodyAvail = Math.max(t.fB * 4, t.w - t.bodyPadX * 2);
+      t.gap = t.valueGap;                       // 「标签→值」的间距（不再用固定的 M.labelGap）
+      ctx.font = lsFont(t.fB, p.fontFamily);
+      const labelW0 = base * M.labelColW * s * (p.labelW == null ? 1 : p.labelW);
+      let labelNeed = 0;
+      for (const r of rows) {
+        const lt = String(r.label || '');
+        if (lt) labelNeed = Math.max(labelNeed, measureLS(ctx, lt, t.labelLSpx));
+      }
+      // 至少给值列留 4 字宽度，避免标签列吃光整行
+      const room = Math.max(0, bodyAvail - t.fB * 4 - t.gap);
+      const labelW = labelNeed > labelW0
+        ? Math.min(labelNeed + t.fB * 0.06, Math.max(labelW0, room))
+        : labelW0;
+      t.labelW = labelW;
       const valueMax = Math.max(t.fB * 4, bodyAvail - labelW - t.gap);
 
-      ctx.font = lsFont(t.fB, p.fontFamily);
       const laid = [];
       let bodyNeed = 0;
       for (const r of rows) {
@@ -288,7 +313,7 @@
         const lines = valueText ? wrapLS(ctx, valueText, valueMax, t.bodyLSpx) : [''];
         let maxW = 0;
         for (const l of lines) maxW = Math.max(maxW, measureLS(ctx, l, t.bodyLSpx));
-        laid.push({ labelText, valueText, lines, maxW, labelWpx: measureLS(ctx, labelText, t.bodyLSpx) });
+        laid.push({ labelText, valueText, lines, maxW, labelWpx: measureLS(ctx, labelText, t.labelLSpx) });
         bodyNeed = Math.max(bodyNeed, labelW + t.gap + Math.min(maxW, valueMax));
       }
       // 内容确实超宽时，把表格撑到刚好放得下
@@ -300,21 +325,39 @@
       t.labelEndX = t.bodyPadX + labelW;
       t.valueX = t.labelEndX + t.gap;
 
-      // 3) 标题折行（顶栏内居中，左侧为圆点预留空间）
-      ctx.font = lsFont(t.fH, p.fontFamily);
+      // 3) 标题折行（顶栏内居中，左侧为圆点预留空间）；
+      //    标题字号变大后可用宽度变窄，此时自动收紧字距，尽量保持单行
+      let titleLS = (p.titleLS == null ? 5 : p.titleLS) * s;
       const inner = t.w - t.padX * 2;
       const dotBlock = t.dotX + t.dotD / 2;
-      const titleAvail = Math.max(t.fH * 4, inner - dotBlock * 2);
+      // 左侧只为圆点预留「圆点本身 + 少量余量」，不再按整个圆点区间让位
+      // （留太多会让标题可用宽度过窄、动辄折行）
+      const dotReserve = Math.min(inner * 0.35, dotBlock + t.dotD * 0.8);
+      const titleAvail = Math.max(t.fH * 4, inner - dotReserve * 2);
+      const fitTitle = (ls) => {
+        let need = 0;
+        for (const ch of Array.from(p.title || '')) need += ctx.measureText(ch).width + ls;
+        return Math.max(0, need - ls);
+      };
+      if (Array.from(p.title || '').length > 1) {
+        for (let i = 0; i < 10 && fitTitle(titleLS) > titleAvail && titleLS > 0; i++) {
+          titleLS = Math.max(0, titleLS - Math.max(1, s));
+        }
+      }
+      t.titleLSpx = titleLS;
       t.titleLines = wrapLS(ctx, p.title || '', titleAvail, t.titleLSpx);
-      t.titleLineH = t.fH * 1.35;
+      // 标题行高单独一个倍率：可与字号解耦（字号调小、行高调大）
+      t.titleLineH = t.fH * (p.titleLineHeightRatio == null ? 1.5 : p.titleLineHeightRatio);
       t.dotBlock = dotBlock;
-      // 标题在「圆点之后到顶栏右侧」的区间内居中，再整体右移一点（参考图实测）
-      t.titleCenterX = dotBlock + (inner - dotBlock) / 2 + base * TITLE_NUDGE * s;
+      t.dotReserve = dotReserve;
+      // 标题在「圆点预留区之后到顶栏右侧」的区间内居中，再整体右移一点（参考图实测）
+      t.titleCenterX = dotReserve + (inner - dotReserve) / 2 + base * TITLE_NUDGE * s;
 
-      // 4) 顶栏高度：随标题字号等比放大（保持圆点/标题的视觉平衡），标题折行时再自动加高
-      const headScale = (p.titleFontScale == null ? 1 : p.titleFontScale);
+      // 4) 顶栏高度 = 标题行高 × 上下留白倍率（留白按文字高度算，不随字号无限放大）；
+      //    标题折行时按行数自动加高
+      const headPad = (p.headerPadRatio == null ? 1.8 : p.headerPadRatio);
       const headTextH = t.titleLines.length * t.titleLineH;
-      t.headerH = Math.max(base * M.headerH * s * headScale, headTextH);
+      t.headerH = Math.max(base * M.headerH * s, headTextH * headPad, headTextH);
 
       // 5) 行块高：内部行距 lineH，行与行之间再留 rowGap
       t.rows = laid.map((r) => Object.assign({}, r, {
@@ -394,7 +437,7 @@
     function scaleTable(t, k) {
       if (k >= 0.999) return;
       t.fB *= k; t.lineH *= k; t.rowGap *= k;
-      t.bodyLSpx *= k;
+      t.bodyLSpx *= k; t.labelLSpx *= k; t.valueGap *= k;
       t.padBodyTop *= k; t.padBottom *= k;
       t.padTop *= k; t.radius *= k;
       t.fH *= k; t.titleLSpx *= k; t.titleLineH *= k;
@@ -402,6 +445,10 @@
       t.rows.forEach((r) => { r.h *= k; });
       t.h *= k;
       t.bodyTop *= k;
+      // bodyPadX / labelW 等横向尺寸不随纵向缩放变化，但列位置缓存必须跟着重算，
+      // 否则 labelEndX 会停留在缩放前的值，与绘制时的实际位置不一致
+      t.labelEndX = t.bodyPadX + t.labelW;
+      t.valueX = t.labelEndX + t.gap;
     }
 
     /* 在「表格高度 + 防伪块高度 + 上下边距」超过图片高度时，求最大的等比缩放系数 */
@@ -516,9 +563,21 @@
       ctx.shadowBlur = t.fH * 0.14;
       ctx.shadowOffsetY = t.fH * 0.03;
       let ty = y + t.headerH / 2 - ((t.titleLines.length - 1) * t.titleLineH) / 2;
+      // 标题纵向拉伸：把字形拉高（宽度基本不变），并**以行中心为锚点**缩放，
+      // 这样居中排版在拉伸后依然居中（不会像左端锚点那样把整行推偏）
+      const hs = p.titleHeightScale == null ? 1 : Math.max(0.5, Math.min(2.5, p.titleHeightScale));
       for (const l of t.titleLines) {
         const lw = measureLS(ctx, l, t.titleLSpx);
-        fillLS(ctx, l, x + t.titleCenterX - lw / 2, ty, t.titleLSpx);
+        const cx = x + t.titleCenterX;
+        if (hs === 1) {
+          fillLS(ctx, l, cx - lw / 2, ty, t.titleLSpx);
+        } else {
+          ctx.save();
+          ctx.translate(cx, ty);          // 锚点 = 这一行的中心
+          ctx.scale(1, hs);               // 只压纵向：文字变高，横向排布不变
+          fillLS(ctx, l, -lw / 2, 0, t.titleLSpx);
+          ctx.restore();
+        }
         ty += t.titleLineH;
       }
       ctx.restore();
@@ -542,7 +601,7 @@
           ctx.fillStyle = p.textColor;
         }
         const firstMid = ry + t.lineH / 2;
-        if (row.labelText) fillLS(ctx, row.labelText, labelX, firstMid, t.bodyLSpx);
+        if (row.labelText) fillLS(ctx, row.labelText, labelX, firstMid, t.labelLSpx);
         let ly = firstMid;
         for (const l of row.lines) {
           if (l) fillLS(ctx, l, valueX, ly, t.bodyLSpx);
