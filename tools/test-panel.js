@@ -39,6 +39,12 @@ function mkEl(tag, id) {
       if (type) el.dispatch(type, ev);
     },
     appendChild(c) { c.parentNode = el; el.children.push(c); return c; },
+    /** innerHTML = '' 时必须清空 children（真实 DOM 行为），否则重复渲染后会读到旧行 */
+    get innerHTML() { return el._html || ''; },
+    set innerHTML(v) { el._html = String(v); el.children.length = 0; },
+    /** canvas 兜底：toBlob 同步回调（导出流程测试用） */
+    toBlob(cb) { cb({ size: 1024, type: 'image/jpeg', __fake: true }); },
+    toDataURL() { return 'data:image/jpeg;base64,AAAA'; },
     replaceWith(node) {
       const p = el.parentNode;
       if (!p) return;
@@ -75,7 +81,17 @@ function mkEl(tag, id) {
       return walk(el);
     },
     querySelectorAll() { return []; },
-    getContext() { return new Proxy({}, { get: (t, k) => (k === 'measureText' ? (() => ({ width: 0 })) : (() => {})) }); }
+    getContext() {
+      const grad = { addColorStop() {} };
+      const noop = () => {};
+      return new Proxy({}, {
+        get: (t, k) => {
+          if (k === 'measureText') return () => ({ width: 0 });
+          if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => grad;
+          return noop;
+        }
+      });
+    }
   };
   Object.defineProperty(el, 'value', {
     get() { return el._val !== undefined ? el._val : ''; },
@@ -165,13 +181,21 @@ function bootOnce() {
     addEventListener() {}
   };
   win = { addEventListener() {}, FREYA_LOGO_DATA_URL: '' };
-  new Function('window', 'document', 'localStorage', 'requestAnimationFrame', 'Image', 'Event', 'setTimeout', scripts.join('\n'))(
+  const urlStub = { createObjectURL: (f) => 'blob:fake/' + (f && f.name ? f.name : 'x'), revokeObjectURL() {} };
+  new Function('window', 'document', 'localStorage', 'requestAnimationFrame', 'Image', 'Event', 'setTimeout', 'URL', scripts.join('\n'))(
     win, doc,
     { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } },
     (cb) => setTimeout(cb, 0),
-    function () { this.naturalWidth = 295; this.naturalHeight = 135; Object.defineProperty(this, 'src', { set() {}, get() { return ''; } }); },
-    function (t) { this.type = t; }, setTimeout);
-  return { win, els, ctls };
+    function () {   // 假 Image：src 赋值后异步触发 onload（与 test-render.js 一致）
+      const self = this;
+      this.naturalWidth = 295; this.naturalHeight = 135;
+      Object.defineProperty(this, 'src', {
+        set() { setTimeout(() => { if (self.onload) self.onload(); }, 0); },
+        get() { return ''; }
+      });
+    },
+    function (t) { this.type = t; }, setTimeout, urlStub);
+  return { win, els, ctls, doc };
 }
 bootOnce();
 
@@ -280,5 +304,191 @@ console.log('\n⑧ 导出设置的持久化');
   t('重启后 titleLineHeightRatio 恢复', P2.titleLineHeightRatio === 1.8, 'got=' + P2.titleLineHeightRatio);
 }
 
-console.log('\n' + (bad ? '✗ ' + bad + ' 项失败 / 共 ' + (ok + bad) : '✓ 全部通过（' + ok + ' 项）'));
-process.exit(bad ? 1 : 0);
+/* ---------- ⑨～⑯ 时间段批量分配（导入 → 分配 → 应用 → 持久化） ---------- */
+const mkFile = (name, ms) => ({
+  name, size: 900 * 1024, type: 'image/jpeg', lastModified: ms,
+  slice: () => ({ arrayBuffer: async () => new ArrayBuffer(0) })
+});
+const flush = (ms) => new Promise((r) => setTimeout(r, ms == null ? 200 : ms));
+const rangeOf = (it) => (it.range ? it.range.start + '-' + it.range.end : '无');
+const rangesOf = (items) => items.map(rangeOf).join(',');
+const shotsOf = (items) => items.map((it) => it.shot || '无').join(',');
+const inWindow = (shot, range) => {
+  if (!shot || !range) return false;
+  const to = (s) => +s.slice(0, 2) * 60 + +s.slice(3, 5);
+  const v = to(shot), lo = to(range.start), hi = to(range.end);
+  return v >= lo && v <= hi;
+};
+const setText = (el, v) => { el.value = v; el.dispatch('input'); };
+const rowText = (box, i) => box.children[i].children.map((c) => c.textContent).join('|');
+/* 让随机变成确定值：0 → 区间起点，0.999… → 区间末端 */
+const withRandom = (v, fn) => { const o = Math.random; Math.random = () => v; try { return fn(); } finally { Math.random = o; } };
+
+const USER_RANGES = '07:08-07:23\n11:33-11:48\n13:10-13:25\n18:33-18:48';
+const NAMES = ['IMG_0001.jpg', 'IMG_0002.jpg', 'IMG_0003.jpg', 'IMG_0004.jpg'];
+
+(async () => {
+  delete store['freya-watermark.params.v1'];      // 干净起点：默认参数
+  const b = bootOnce();
+  const E = b.els;
+  const S = b.win.__freya;
+  const WM = b.win.FreyaWM;
+
+  const importFiles = async (names, baseMs) => {
+    E.fileInput.files = names.map((n, i) => mkFile(n, (baseMs || new Date(2026, 7, 19, 7, 15).getTime()) + i * 1000));
+    E.fileInput.onchange({ target: E.fileInput });
+    await flush(200);
+  };
+
+  console.log('\n⑨ 默认预填 + 一次导入 4 张 → 各自在区间内随机取一个拍摄时间');
+  {
+    t('时间段框默认预填用户给的 4 个区间',
+      E.rangesText.value === USER_RANGES, JSON.stringify(E.rangesText.value));
+    await importFiles(NAMES);
+    t('导入 4 张', S.items.length === 4, 'items=' + S.items.length);
+    t('4 张分别拿到 07:08-07:23 / 11:33-11:48 / 13:10-13:25 / 18:33-18:48',
+      rangesOf(S.items) === '07:08-07:23,11:33-11:48,13:10-13:25,18:33-18:48', rangesOf(S.items));
+    t('每张的随机时间点都落在自己的区间内', S.items.every((it) => inWindow(it.shot, it.range)), shotsOf(S.items));
+    t('4 张的时间点互不相同（区间不重叠）', new Set(S.items.map((it) => it.shot)).size === 4, shotsOf(S.items));
+    t('表格「拍摄时间」行 = 日期 + 随机到的时刻（不再是区间）',
+      WM.formatShot(S.items[0].date, 'datetime', S.items[0].shot) === '2026.08.19 ' + S.items[0].shot,
+      WM.formatShot(S.items[0].date, 'datetime', S.items[0].shot));
+    t('第 4 张 = 2026.08.19 + 区间 18:33-18:48 内的时刻',
+      WM.formatShot(S.items[3].date, 'datetime', S.items[3].shot) === '2026.08.19 ' + S.items[3].shot &&
+      inWindow(S.items[3].shot, S.items[3].range),
+      WM.formatShot(S.items[3].date, 'datetime', S.items[3].shot));
+    t('日期取自图片本身（EXIF 缺失时回落文件时间）',
+      S.items[0].date.getFullYear() === 2026 && S.items[0].date.getMonth() === 7 && S.items[0].date.getDate() === 19,
+      String(S.items[0].date));
+    t('预览信息 = …· 拍摄时间 hh:mm（区间 07:08-07:23）',
+      new RegExp('拍摄时间 \\d{2}:\\d{2}（区间 07:08-07:23）$').test(E.imgMeta.textContent), E.imgMeta.textContent);
+
+    // 稳定性：改别的参数触发重绘，随机时间点不能跟着变（否则每次重绘都在跳）
+    const kept = shotsOf(S.items);
+    setText(E.titleLS, '8');
+    await flush(150);
+    t('重绘后时间点不变（随机只在分配时取一次）', shotsOf(S.items) === kept, kept + ' → ' + shotsOf(S.items));
+    setText(E.titleLS, '5');
+  }
+
+  console.log('\n⑩ 映射清单 / 状态 / 预览信息 / 导出文件名 {range} {shot}');
+  {
+    t('映射清单 4 行', E.rangeMap.children.length === 4, 'rows=' + E.rangeMap.children.length);
+    t('第 1 行 = 1|IMG_0001.jpg|07:08-07:23 → <时刻>',
+      rowText(E.rangeMap, 0) === '1|IMG_0001.jpg|07:08-07:23 → ' + S.items[0].shot, rowText(E.rangeMap, 0));
+    t('第 4 行 = 4|IMG_0004.jpg|18:33-18:48 → <时刻>',
+      rowText(E.rangeMap, 3) === '4|IMG_0004.jpg|18:33-18:48 → ' + S.items[3].shot, rowText(E.rangeMap, 3));
+    t('状态 = 4 个时间段 · 已与队列一致', E.rangeStatus.textContent === '4 个时间段 · 已与队列一致', E.rangeStatus.textContent);
+
+    // 导出：捕获 <a download> 文件名
+    const anchors = [];
+    b.doc.createElement = (tag) => { const el = mkEl(tag); if (String(tag).toLowerCase() === 'a') anchors.push(el); return el; };
+    setText(E.nameTpl, '{range}_{name}');
+    E.btnExportOne.dispatch('click');
+    await flush(120);
+    t('导出文件名里的 {range} = 0708-0723', anchors.length === 1 && anchors[0].download === '0708-0723_IMG_0001.jpg',
+      anchors.map((a) => a.download).join(',') || '未导出');
+
+    anchors.length = 0;
+    setText(E.nameTpl, '{shot}_{name}');
+    E.btnExportOne.dispatch('click');
+    await flush(120);
+    t('导出文件名里的 {shot} = 图里画的那个时刻',
+      anchors.length === 1 && anchors[0].download === S.items[0].shot.replace(':', '') + '_IMG_0001.jpg',
+      anchors.map((a) => a.download).join(',') || '未导出');
+  }
+
+  console.log('\n⑪ 改列表不隐式重排；「应用到队列」才生效（且幂等）');
+  {
+    setText(E.rangesText, '08:00-08:15\n12:00-12:15\n14:00-14:15\n19:00-19:15');
+    t('改列表后已分配的时间段不变（粘性快照）',
+      rangesOf(S.items) === '07:08-07:23,11:33-11:48,13:10-13:25,18:33-18:48', rangesOf(S.items));
+    t('状态变为「待更新 4 项」', E.rangeStatus.textContent === '4 个时间段 · 待更新 4 项', E.rangeStatus.textContent);
+    t('清单行标为待更新（pend）', E.rangeMap.children[0].classList.contains('pend'));
+
+    withRandom(0, () => E.btnApplyRanges.dispatch('click'));
+    t('应用后 4 张全部更新为新时间段',
+      rangesOf(S.items) === '08:00-08:15,12:00-12:15,14:00-14:15,19:00-19:15', rangesOf(S.items));
+    t('区间变了 → 时间点重新随机（取到区间起点 08:00…）',
+      shotsOf(S.items) === '08:00,12:00,14:00,19:00', shotsOf(S.items));
+    withRandom(0.999999, () => E.btnApplyRanges.dispatch('click'));
+    t('区间没变 → 再次应用不重新随机（幂等）', shotsOf(S.items) === '08:00,12:00,14:00,19:00', shotsOf(S.items));
+    t('状态回到「已与队列一致」', E.rangeStatus.textContent === '4 个时间段 · 已与队列一致', E.rangeStatus.textContent);
+  }
+
+  console.log('\n⑫ 某行留空 = 该张不分配（位置仍然对应）');
+  {
+    setText(E.rangesText, '07:08-07:23\n\n13:10-13:25\n18:33-18:48');
+    E.btnApplyRanges.dispatch('click');
+    t('第 2 张无时间段，其余 3 张不受影响',
+      rangesOf(S.items) === '07:08-07:23,无,13:10-13:25,18:33-18:48', rangesOf(S.items));
+    t('第 2 张同时也没有随机时间点', S.items[1].range === null && S.items[1].shot === null, shotsOf(S.items));
+    t('无时间段的那行标为 none', E.rangeMap.children[1].classList.contains('none'));
+    t('无时间段时回退为图片自身时间（1 个时间）',
+      WM.formatShot(S.items[1].date, 'datetime', S.items[1].shot) === '2026.08.19 07:15',
+      WM.formatShot(S.items[1].date, 'datetime', S.items[1].shot));
+    t('状态按有效条数计 = 3 个时间段', E.rangeStatus.textContent === '3 个时间段 · 已与队列一致', E.rangeStatus.textContent);
+  }
+
+  console.log('\n⑬ 非法行只影响该行并提示行号');
+  {
+    setText(E.rangesText, '07:08-07:23\n25:00-26:00\n13:10');
+    t('状态提示第 2、3 行无法识别', /第 2、3 行无法识别/.test(E.rangeStatus.textContent), E.rangeStatus.textContent);
+    t('非法输入不改变已分配结果', rangesOf(S.items) === '07:08-07:23,无,13:10-13:25,18:33-18:48', rangesOf(S.items));
+    E.btnApplyRanges.dispatch('click');
+    t('应用后只有第 1 张有时间段',
+      rangesOf(S.items) === '07:08-07:23,无,无,无', rangesOf(S.items));
+  }
+
+  console.log('\n⑭ 关闭「导入时自动分配」后导入不再自动贴时间段');
+  {
+    E.btnClear.dispatch('click');
+    E.rangeAuto.checked = false; E.rangeAuto.dispatch('change');
+    setText(E.rangesText, USER_RANGES);
+    await importFiles(NAMES);
+    t('4 张都没有时间段和时间点', rangesOf(S.items) === '无,无,无,无' && shotsOf(S.items) === '无,无,无,无', shotsOf(S.items));
+    t('状态显示待更新 4 项', E.rangeStatus.textContent === '4 个时间段 · 待更新 4 项', E.rangeStatus.textContent);
+    E.btnApplyRanges.dispatch('click');
+    t('手动「应用到队列」仍可分配',
+      rangesOf(S.items) === '07:08-07:23,11:33-11:48,13:10-13:25,18:33-18:48', rangesOf(S.items));
+    t('手动分配也各自随机到了区间内', S.items.every((it) => inWindow(it.shot, it.range)), shotsOf(S.items));
+  }
+
+  console.log('\n⑮ 清空按钮 = 停用时间段（清列表 + 取消全部分配）');
+  {
+    E.btnClearRanges.dispatch('click');
+    t('列表已清空', E.rangesText.value === '', JSON.stringify(E.rangesText.value));
+    t('全部分配已取消', rangesOf(S.items) === '无,无,无,无' && shotsOf(S.items) === '无,无,无,无', shotsOf(S.items));
+    t('状态回到未启用', E.rangeStatus.textContent === '未启用', E.rangeStatus.textContent);
+  }
+
+  console.log('\n⑯ 重新随机：全部重随机 / 点单行重随机');
+  {
+    setText(E.rangesText, '08:00-08:15\n12:00-12:15\n14:00-14:15\n19:00-19:15');
+    withRandom(0, () => E.btnApplyRanges.dispatch('click'));
+    t('先全部落在区间起点', shotsOf(S.items) === '08:00,12:00,14:00,19:00', shotsOf(S.items));
+    withRandom(0.999999, () => E.btnRerollShots.dispatch('click'));
+    t('「重新随机」把 4 张都换成区间末端（区间不变）',
+      shotsOf(S.items) === '08:15,12:15,14:15,19:15', shotsOf(S.items));
+    t('区间没有被改动', rangesOf(S.items) === '08:00-08:15,12:00-12:15,14:00-14:15,19:00-19:15', rangesOf(S.items));
+    withRandom(0, () => E.rangeMap.children[0].children[2].dispatch('click'));
+    t('点清单里的时刻只重随机那一张', shotsOf(S.items) === '08:00,12:15,14:15,19:15', shotsOf(S.items));
+    t('清单里显示的时刻同步更新', rowText(E.rangeMap, 0) === '1|IMG_0001.jpg|08:00-08:15 → 08:00', rowText(E.rangeMap, 0));
+  }
+
+  console.log('\n⑰ 时间段列表与开关的持久化');
+  {
+    setText(E.rangesText, '07:08-07:23\n11:33-11:48');
+    t('rangesText 已入库', JSON.parse(store['freya-watermark.params.v1']).rangesText === '07:08-07:23\n11:33-11:48');
+    t('rangeAuto=false 已入库', JSON.parse(store['freya-watermark.params.v1']).rangeAuto === false);
+    const b2 = bootOnce();
+    t('重启后 rangesText 恢复', b2.win.__freya.params.rangesText === '07:08-07:23\n11:33-11:48', JSON.stringify(b2.win.__freya.params.rangesText));
+    t('重启后时间段框文本恢复', b2.els.rangesText.value === '07:08-07:23\n11:33-11:48');
+    t('重启后「导入时自动分配」保持未勾选', b2.els.rangeAuto.checked === false);
+    t('重启后队列为空（队列本来就不持久化，重新导入会重新随机）', b2.win.__freya.items.length === 0);
+  }
+
+  console.log('\n' + (bad ? '✗ ' + bad + ' 项失败 / 共 ' + (ok + bad) : '✓ 全部通过（' + ok + ' 项）'));
+  process.exit(bad ? 1 : 0);
+})();
+

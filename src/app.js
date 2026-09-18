@@ -147,6 +147,7 @@
 
     setBusy(true, '正在读取图片…', 0);
     let added = 0;
+    const fresh = [];                      // 本批新增的条目（时间段只贴到它们身上）
     for (let i = 0; i < list.length; i++) {
       const file = list[i];
       const loaded = await loadFile(file);
@@ -159,22 +160,34 @@
       if (!date) date = new Date(file.lastModified || Date.now());
 
       const w = loaded.img.naturalWidth, h = loaded.img.naturalHeight;
-      state.items.push({
+      const item = {
         id: 'it' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
         file, url: loaded.url, img: loaded.img, name: file.name,
-        w, h, base: baseOf(w, h), date,
+        w, h, base: baseOf(w, h), date, range: null, shot: null,
         code: WM.randomCode(state.params.codeLen)
-      });
+      };
+      state.items.push(item);
+      fresh.push(item);
       added++;
       setBusy(true, `正在读取图片… ${i + 1}/${list.length}`, (i + 1) / list.length);
     }
     setBusy(false);
 
     if (added) {
+      // 时间段：只按顺序贴给本批新增的图（不动队列里已有的），第 1 行 → 本批第 1 张，
+      // 每张在自己的区间内随机取一个拍摄时间
+      let ranged = 0;
+      if (state.params.rangeAuto !== false) {
+        const { slots } = parseRanges();
+        if (slots.length) {
+          assignRanges(fresh, slots.slice(0, fresh.length));
+          ranged = fresh.filter((it) => it.range).length;
+        }
+      }
       if (state.active < 0) state.active = 0;
       syncQueue();
       scheduleRender();
-      toast(`已导入 ${added} 张图片`);
+      toast(`已导入 ${added} 张图片` + (ranged ? ` · 已分配 ${ranged} 个时间段（各自随机取一个时间点）` : ''));
     } else {
       toast('导入失败：不支持的文件格式');
     }
@@ -184,7 +197,8 @@
   const CONTROL_IDS = ['scale', 'marginX', 'marginY', 'opacity', 'tableOpacity', 'title', 'titleLS', 'bodyLS',
     'labelLS', 'valueGapRatio', 'titleFontScale', 'titleHeightScale', 'titleLineHeightRatio', 'headerPadRatio',
     'labelW', 'accent', 'dotColor', 'bgColor', 'textColor', 'fontFamily', 'radius', 'shadow',
-    'showTable', 'showLogo', 'logoScale', 'showCode', 'codeLen', 'codeLabel', 'codeSize'];
+    'showTable', 'showLogo', 'logoScale', 'showCode', 'codeLen', 'codeLabel', 'codeSize',
+    'rangesText', 'rangeAuto'];
 
   /* 导出/视图设置：也纳入持久化（面板上「全部数据」都要存） */
   const EXPORT_IDS = ['format', 'quality', 'nameTpl', 'maxEdge', 'fitView'];
@@ -282,6 +296,10 @@
     p.codeLabel = $('codeLabel').value;
     p.codeSize = +$('codeSize').value / 100;
 
+    // 时间段列表（第 n 行 → 队列第 n 张）
+    p.rangesText = $('rangesText').value;
+    p.rangeAuto = $('rangeAuto').checked;
+
     p.rows = ROW_IDS.map((r) => ({
       on: $(r.on).checked,
       label: $(r.label).value,
@@ -321,6 +339,8 @@
       const off = !$(r.on).checked;
       $(r.on).closest('.field').classList.toggle('off', off);
     });
+
+    syncRangeMap();          // 列表/勾选框变化后刷新映射清单与状态
   }
 
   function writeUI() {
@@ -354,6 +374,8 @@
     $('codeLen').value = p.codeLen;
     $('codeLabel').value = p.codeLabel;
     $('codeSize').value = p.codeSize * 100;
+    $('rangesText').value = p.rangesText == null ? '' : p.rangesText;
+    $('rangeAuto').checked = p.rangeAuto !== false;
     ROW_IDS.forEach((r) => {
       const row = p.rows[r.idx] || {};
       $(r.on).checked = row.on !== false;
@@ -377,10 +399,104 @@
     return p.rows.map((r) => {
       let value = r.text;
       if (r.type === 'datetime' || r.type === 'date' || r.type === 'time') {
-        value = WM.formatDate((item && item.date) || new Date(), r.type);
+        // 分配了时间段时，datetime/time 行显示「日期 + 区间内随机到的时刻」；否则仍是单个时间
+        value = WM.formatShot((item && item.date) || new Date(), r.type, item && item.shot,
+          item && item.range && item.range.date);
       }
       return { on: r.on, label: r.label, value };
     });
+  }
+
+  /* ---------------- 时间段批量分配 ----------------
+   * 「第 n 行 → 队列第 n 张」，一次拖入多张时各自在自己的区间里随机取一个拍摄时间。
+   * 分配是**粘性快照**：只有「导入（自动分配开启时）」和「应用到队列」会写 item.range / item.shot，
+   * 删图 / 改列表都不会隐式重排，也不会重新随机（随机点在 item.shot 上固定，预览与导出一致）。 */
+  function parseRanges() {
+    return WM.parseTimeRanges($('rangesText').value);
+  }
+
+  const sameRange = (r, s) => (!r && !s) ||
+    !!(r && s && r.start === s.start && r.end === s.end && (r.date || null) === (s.date || null));
+
+  /** 把 slots 按顺序贴到 list 上（缺位 = 该张不分配时间段）
+   *  区间没变就保留原来的随机时间点，只有区间变了（或还没有）才重新随机 → 「应用」是幂等的。 */
+  function assignRanges(list, slots, reroll) {
+    list.forEach((it, i) => {
+      const s = slots[i] || null;
+      const keep = !reroll && sameRange(it.range, s);
+      it.range = s ? { start: s.start, end: s.end, date: s.date } : null;
+      if (!s) it.shot = null;
+      else if (!keep || !it.shot) it.shot = WM.pickShotTime(s);
+    });
+  }
+
+  /** 保持区间、只重新随机一次时间点 */
+  function rerollShots() {
+    let n = 0;
+    state.items.forEach((it) => {
+      if (it.range) { it.shot = WM.pickShotTime(it.range); n++; }
+    });
+    if (!n) { toast('还没有分配时间段（先在列表里写区间并「应用到队列」）'); return; }
+    readUI();
+    scheduleRender();
+    toast(`已在各自区间内重新随机 ${n} 个拍摄时间`);
+  }
+
+  function applyRangesToQueue() {
+    const { slots } = parseRanges();
+    assignRanges(state.items, slots);
+    readUI();                 // 顺带刷新状态文本与映射清单
+    scheduleRender();
+    const valid = slots.filter(Boolean).length;
+    toast(valid ? `已按顺序分配 ${valid} 个时间段（各自随机取一个时间点）` : '已取消全部时间段（改用图片自身拍摄时间）');
+  }
+
+  /** 刷新映射清单：每张图一行，显示「区间 → 随机到的时间点」，并标出与列表不一致的行 */
+  function syncRangeMap() {
+    const box = $('rangeMap');
+    const { slots, invalid } = parseRanges();
+    box.innerHTML = '';
+    state.items.forEach((it, i) => {
+      const s = slots[i] || null;
+      const row = document.createElement('div');
+      row.className = 'ritem' + (!s ? ' none' : (sameRange(it.range, s) ? '' : ' pend'));
+      const idx = document.createElement('i');
+      idx.textContent = String(i + 1);
+      const name = document.createElement('span');
+      name.textContent = it.name;
+      const val = document.createElement('b');
+      if (it.range) {
+        val.textContent = it.range.start + '-' + it.range.end + ' → ' + (it.shot || '—');
+        val.title = '点击重新随机这张的时间';
+        val.onclick = () => {
+          it.shot = WM.pickShotTime(it.range);
+          syncRangeMap();
+          scheduleRender();
+        };
+      } else {
+        val.textContent = '用图片时间';
+      }
+      row.appendChild(idx);
+      row.appendChild(name);
+      row.appendChild(val);
+      box.appendChild(row);
+    });
+
+    const bits = [];
+    const valid = slots.filter(Boolean).length;
+    if (!valid && !invalid.length) {
+      bits.push('未启用');
+    } else {
+      if (valid) bits.push(`${valid} 个时间段`);
+      if (!state.items.length) bits.push('队列为空');
+      else {
+        const diff = state.items.filter((it, i) => !sameRange(it.range, slots[i] || null)).length;
+        bits.push(diff ? `待更新 ${diff} 项` : '已与队列一致');
+        if (slots.length > state.items.length) bits.push(`后 ${slots.length - state.items.length} 行未使用`);
+      }
+      if (invalid.length) bits.push(`第 ${invalid.map((x) => x.line).join('、')} 行无法识别`);
+    }
+    $('rangeStatus').textContent = bits.join(' · ');
   }
 
   /* ---------------- 预览 ---------------- */
@@ -423,7 +539,8 @@
 
     preview.classList.add('show');
     applyFit();
-    $('imgMeta').textContent = `${item.w} × ${item.h} · ${(item.file.size / 1024 / 1024).toFixed(2)} MB · ${item.name}`;
+    $('imgMeta').textContent = `${item.w} × ${item.h} · ${(item.file.size / 1024 / 1024).toFixed(2)} MB · ${item.name}` +
+      (item.shot ? ` · 拍摄时间 ${item.shot}` + (item.range ? `（区间 ${item.range.start}-${item.range.end}）` : '') : '');
   }
 
   function applyFit() {
@@ -472,6 +589,7 @@
     $('queueInfo').textContent = n ? `队列：${n} 张（点击缩略图切换）` : '队列为空';
     $('btnExportZip').disabled = n === 0 || state.busy;
     $('btnExportOne').disabled = n === 0 || state.busy;
+    syncRangeMap();          // 队列变化（增/删/清空）后同步时间段映射清单
   }
 
   function removeItem(i) {
@@ -550,10 +668,18 @@
   function buildName(tpl, item, code, i, w, h) {
     const d = item.date || new Date();
     const p2 = (n) => (n < 10 ? '0' + n : '' + n);
+    const range = item.range
+      ? item.range.start.replace(':', '') + '-' + item.range.end.replace(':', '')
+      : p2(d.getHours()) + p2(d.getMinutes());
+    const shot = item.shot
+      ? item.shot.replace(':', '')
+      : p2(d.getHours()) + p2(d.getMinutes());
     const out = String(tpl || '{name}_watermark')
       .replace(/\{name\}/g, safeName(item.name))
       .replace(/\{date\}/g, `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}`)
       .replace(/\{time\}/g, `${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`)
+      .replace(/\{range\}/g, range)
+      .replace(/\{shot\}/g, shot)
       .replace(/\{code\}/g, code)
       .replace(/\{i\}/g, String(i + 1))
       .replace(/\{w\}/g, String(w))
@@ -746,6 +872,19 @@
     $('btnClear').onclick = () => { clearQueue(); toast('已清空队列'); };
     $('fitView').onchange = applyFit;
     window.addEventListener('resize', () => applyFit());
+
+    // 时间段：应用到队列 / 重新随机 / 清空（清空 = 清空列表 + 取消全部分配）
+    $('btnApplyRanges').onclick = () => applyRangesToQueue();
+    $('btnRerollShots').onclick = () => rerollShots();
+    $('btnClearRanges').onclick = () => {
+      $('rangesText').value = '';
+      readUI();
+      assignRanges(state.items, []);
+      syncRangeMap();
+      scheduleRender();
+      saveParams();
+      toast('已清空时间段列表，所有图片改用自身拍摄时间');
+    };
 
     // 导出
     $('btnExportOne').onclick = exportOne;

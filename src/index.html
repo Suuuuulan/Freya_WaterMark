@@ -35,6 +35,26 @@
         <span>或点击选择 / 粘贴（Ctrl+V）· 支持 JPG / PNG / WebP</span>
       </div>
       <div class="row small muted" id="queueInfo">队列为空</div>
+
+      <div class="ctl field">
+        <div class="field-head">
+          <label>时间段（每行一个区间 · 第 n 行 → 队列第 n 张）</label>
+          <label class="chk"><input type="checkbox" id="rangeAuto" checked><span>导入时自动分配</span></label>
+        </div>
+        <textarea id="rangesText" rows="4" spellcheck="false"></textarea>
+        <div class="row small" style="margin:6px 0 0">
+          <button class="btn btn-mini" id="btnApplyRanges" type="button">应用到队列</button>
+          <button class="btn btn-mini" id="btnRerollShots" type="button">重新随机</button>
+          <button class="btn btn-mini" id="btnClearRanges" type="button">清空</button>
+          <span class="muted" id="rangeStatus">未启用</span>
+        </div>
+        <div class="range-map" id="rangeMap"></div>
+        <div class="small muted" style="margin-top:6px">
+          <strong>每张图在区间内随机取一个时间点</strong>当拍摄时间，取好后固定不动
+          （点清单里的时刻可单独重随机）。支持 7:08-7:23 / 07:08~07:23 / 07:08至07:23，
+          可加日期前缀 2026.08.19 07:08-07:23；某行留空表示该张不用时间段。
+        </div>
+      </div>
     </section>
 
     <section class="card">
@@ -280,7 +300,9 @@
         <input type="text" id="nameTpl" value="{name}_watermark" placeholder="{name}_watermark">
         <div class="small muted" style="margin-top:6px">
           可用变量：<code>{name}</code> 原文件名 ·
-          <code>{date}</code> 日期 · <code>{time}</code> 时间 ·
+          <code>{date}</code> 日期 · <code>{time}</code> 原始时间 ·
+          <code>{range}</code> 时间段（0708-0723）·
+          <code>{shot}</code> 随机到的拍摄时间（0711）·
           <code>{code}</code> 防伪码 · <code>{i}</code> 序号 ·
           <code>{w}</code> 宽 · <code>{h}</code> 高
         </div>

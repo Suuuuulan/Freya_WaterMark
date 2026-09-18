@@ -189,6 +189,25 @@ input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border: 2px s
 .field input[type="text"]:last-child, .field textarea:last-child { margin-bottom: 0; }
 .field.off { opacity: .45; }
 
+/* ---------- 时间段映射清单 ---------- */
+.range-map { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; max-height: 132px; overflow-y: auto; }
+.range-map:empty { display: none; }
+.ritem {
+  display: flex; align-items: baseline; gap: 6px;
+  font-size: 11.5px; color: var(--muted);
+  background: #12171d; border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 7px;
+}
+.ritem i { font-style: normal; flex: none; color: var(--accent); font-variant-numeric: tabular-nums; }
+.ritem span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ritem b {
+  flex: none; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums;
+  cursor: pointer; border-bottom: 1px dashed rgba(21, 167, 250, .5);   /* 可点：单独重随机 */
+}
+.ritem b:hover { background: rgba(21, 167, 250, .14); }
+.ritem.none b { font-weight: 400; color: var(--muted); cursor: default; border-bottom: 0; }
+.ritem.pend { border-color: rgba(21, 167, 250, .55); }
+
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .small { font-size: 12px; }
 .muted { color: var(--muted); }

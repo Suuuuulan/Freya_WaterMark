@@ -446,6 +446,102 @@ setTimeout(() => {
   check('date = 2026.08.19', WM.formatDate(d, 'date') === '2026.08.19');
   check('time = 10:59', WM.formatDate(d, 'time') === '10:59');
 
+  console.log('\n10) 时间段解析 parseTimeRanges');
+  const P = WM.parseTimeRanges;
+  const four = P('07:08-07:23\n11:33-11:48\n13:10-13:25\n18:33-18:48');
+  check('4 行 → 4 个槽位、无非法行', four.slots.length === 4 && four.invalid.length === 0,
+    'slots=' + four.slots.length + ' invalid=' + four.invalid.length);
+  check('第 1 个槽位 = 07:08-07:23',
+    four.slots[0] && four.slots[0].start === '07:08' && four.slots[0].end === '07:23',
+    JSON.stringify(four.slots[0]));
+  check('第 4 个槽位 = 18:33-18:48',
+    four.slots[3] && four.slots[3].start === '18:33' && four.slots[3].end === '18:48');
+  check('不写补零时自动补零（7:8-7:23 → 07:08-07:23）',
+    P('7:8-7:23').slots[0].start === '07:08' && P('7:8-7:23').slots[0].end === '07:23',
+    JSON.stringify(P('7:8-7:23').slots[0]));
+  check('全角冒号 07：08－07：23 可解析',
+    !!P('07：08-07：23').slots[0] && P('07：08-07：23').invalid.length === 0);
+  check('波浪线 / 至 / 到 三种连接符都可解析',
+    P('07:08~07:23').slots[0].end === '07:23' &&
+    P('07:08至07:23').slots[0].end === '07:23' &&
+    P('07:08到07:23').slots[0].end === '07:23');
+  check('逗号分隔的一行多个区间可解析', (() => {
+    const r = P('07:08-07:23, 11:33-11:48');
+    return r.slots.length === 2 && r.slots[1].start === '11:33';
+  })(), JSON.stringify(P('07:08-07:23, 11:33-11:48').slots));
+  check('分号分隔也可解析', P('07:08-07:23；11:33-11:48').slots.length === 2);
+  check('序号前缀「1. 07:08-07:23」可解析', (() => {
+    const r = P('1. 07:08-07:23');
+    return r.slots.length === 1 && !!r.slots[0] && r.slots[0].start === '07:08';
+  })(), JSON.stringify(P('1. 07:08-07:23').slots));
+  check('日期前缀 2026.08.19 被识别并归一', (() => {
+    const s = P('2026.08.19 07:08-07:23').slots[0];
+    return s && s.date === '2026.08.19' && s.start === '07:08';
+  })(), JSON.stringify(P('2026.08.19 07:08-07:23').slots[0]));
+  check('日期前缀 2026年8月19日 可识别',
+    P('2026年8月19日 07:08-07:23').slots[0].date === '2026.08.19');
+  check('未写日期时 date = null', four.slots[0].date === null, String(four.slots[0].date));
+  check('中间空行保留为 null 槽位（第 2 张不分配）', (() => {
+    const r = P('07:08-07:23\n\n13:10-13:25');
+    return r.slots.length === 3 && r.slots[1] === null && r.slots[2].start === '13:10';
+  })());
+  check('末尾空行自动裁掉', P('07:08-07:23\n\n').slots.length === 1);
+  check('空白输入 → 0 槽位', P('   \n  ').slots.length === 0);
+  check('null / undefined 输入不报错', P(null).slots.length === 0 && P(undefined).slots.length === 0);
+  check('非法时间 25:00-26:00 → 该槽位 null 且报行号', (() => {
+    const r = P('25:00-26:00');
+    return r.slots.length === 0 && r.invalid.length === 1 && r.invalid[0].line === 1;
+  })(), JSON.stringify(P('25:00-26:00')));
+  check('末尾非法行报行号，且不产生多余槽位', (() => {
+    const r = P('07:08-07:23\n13:10');
+    return r.slots.length === 1 && r.slots[0].start === '07:08' && r.invalid.length === 1 && r.invalid[0].line === 2;
+  })(), JSON.stringify(P('07:08-07:23\n13:10')));
+  check('分钟 60 → 非法', P('07:60-08:00').invalid.length === 1);
+  check('非法行不阻塞后续行', P('乱写\n11:33-11:48').slots[1].start === '11:33');
+
+  console.log('\n11) 区间内随机取一个时间点 pickShotTime / formatShot');
+  const PK = WM.pickShotTime;
+  const R1 = { start: '07:08', end: '07:23', date: null };
+  const inRange = (t, a, b) => {
+    const to = (s) => +s.slice(0, 2) * 60 + +s.slice(3, 5);
+    const v = to(t), lo = to(a), hi = to(b);
+    return /^\d{2}:\d{2}$/.test(t) && v >= lo && v <= hi;
+  };
+  const picks = Array.from({ length: 300 }, () => PK(R1));
+  check('300 次取值都是 HH:MM 且落在 07:08~07:23 内', picks.every((t) => inRange(t, '07:08', '07:23')),
+    [...new Set(picks)].sort().join(' '));
+  check('取值确实随机（300 次覆盖到多个不同时间点）', new Set(picks).size >= 8, 'distinct=' + new Set(picks).size);
+  check('区间只有一分钟时固定取它', PK({ start: '07:08', end: '07:08' }) === '07:08', String(PK({ start: '07:08', end: '07:08' })));
+  check('跨天区间 23:50-00:10 回绕到 23:5x / 00:0x/00:10',
+    Array.from({ length: 200 }, () => PK({ start: '23:50', end: '00:10' }))
+      .every((t) => /^23:5\d$/.test(t) || /^00:(0\d|10)$/.test(t)),
+    [...new Set(Array.from({ length: 200 }, () => PK({ start: '23:50', end: '00:10' })))].sort().join(' '));
+  check('没有区间时返回 null', PK(null) === null && PK({ start: '', end: '' }) === null);
+  check('Math.random = 0 → 取区间起点', (() => {
+    const o = Math.random; Math.random = () => 0;
+    const v = PK(R1); Math.random = o; return v;
+  })() === '07:08');
+  check('Math.random → 1 时也夹在区间末端（不越界）', (() => {
+    const o = Math.random; Math.random = () => 0.999999999;
+    const v = PK(R1); Math.random = o; return v;
+  })() === '07:23');
+
+  const FS = WM.formatShot;
+  check('datetime + 随机时刻 = 2026.08.19 07:11', FS(d, 'datetime', '07:11') === '2026.08.19 07:11', FS(d, 'datetime', '07:11'));
+  check('time 行 = 07:11（只显示时刻）', FS(d, 'time', '07:11') === '07:11', FS(d, 'time', '07:11'));
+  check('date 行不受随机时刻影响', FS(d, 'date', '07:11') === '2026.08.19', FS(d, 'date', '07:11'));
+  check('没有随机时刻时完全等于 formatDate（datetime）', FS(d, 'datetime', null) === '2026.08.19 10:59', FS(d, 'datetime', null));
+  check('没有随机时刻时完全等于 formatDate（time）', FS(d, 'time', null) === '10:59');
+  check('日期前缀优先于图片自身日期', FS(d, 'datetime', '07:11', '2025.01.02') === '2025.01.02 07:11',
+    FS(d, 'datetime', '07:11', '2025.01.02'));
+  check('DEFAULTS.rangesText 解析出用户要的 4 个区间，且每个都能取到区间内的时刻', (() => {
+    const r = WM.parseTimeRanges(WM.DEFAULTS.rangesText);
+    if (r.slots.length !== 4) return false;
+    if (r.slots.map((s) => s.start + '-' + s.end).join(',') !==
+      '07:08-07:23,11:33-11:48,13:10-13:25,18:33-18:48') return false;
+    return r.slots.every((s) => inRange(PK(s), s.start, s.end));
+  })(), JSON.stringify(WM.parseTimeRanges(WM.DEFAULTS.rangesText).slots.map((s) => s.start + '-' + s.end)));
+
   console.log('\n' + (fail === 0 ? `全部通过（${pass} 项）` : `${fail} 项失败 / 共 ${pass + fail} 项`));
   process.exit(fail ? 1 : 0);
 }, 20);

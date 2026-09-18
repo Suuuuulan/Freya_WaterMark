@@ -61,6 +61,13 @@
     codeLabel: '防伪',
     codeSize: 1.28,
 
+    /* 时间段批量分配（界面用；渲染引擎读到也不影响）
+     * rangesText 每行一个区间，第 n 行对应队列第 n 张；空行 = 该张不分配。
+     * 区间是取值范围：每张在区间内**随机取一个时间点**当拍摄时间（如 2026.08.19 07:11），
+     * 取好后固定在 item.shot 上（预览与导出一致，不会每次重绘都跳）。 */
+    rangesText: '07:08-07:23\n11:33-11:48\n13:10-13:25\n18:33-18:48',
+    rangeAuto: true,
+
     /* 导出 / 视图设置（界面用；渲染引擎读到也不影响） */
     format: 'image/jpeg',
     quality: 92,
@@ -122,6 +129,70 @@
     if (type === 'date') return `${Y}.${Mo}.${D}`;
     if (type === 'time') return `${H}:${Mi}`;
     return `${Y}.${Mo}.${D} ${H}:${Mi}`;
+  }
+
+  /* ---------------- 时间段解析 / 格式化 ----------------
+   * 一段区间 = 起始 H:MM + 连接符 + 结束 H:MM，可带日期前缀。
+   * 连接符接受 - ~ ～ – — 至 到；冒号接受半角 : 和全角 ：；日期前缀接受
+   * 2026.08.19 / 2026-08-19 / 2026/08/19 / 2026年8月19日。 */
+  const RANGE_DATE = '(?:(\\d{4})\\s*[-.\\/年]\\s*(\\d{1,2})\\s*[-.\\/月]\\s*(\\d{1,2})\\s*日?\\s+)?';
+  const RANGE_RE = new RegExp(
+    '^' + RANGE_DATE +
+    '(\\d{1,2})\\s*[:：]\\s*(\\d{1,2})\\s*(?:[-~～–—]|至|到)\\s*(\\d{1,2})\\s*[:：]\\s*(\\d{1,2})$'
+  );
+
+  /** 解析时间段列表文本 → { slots, invalid }
+   *  slots[i] = null（空行/非法行，该张不分配）或 { start, end, date }
+   *  第 i 行对应队列第 i 张；末尾空行自动裁掉，中间空行保留「跳过」语义。 */
+  function parseTimeRanges(text) {
+    const slots = [];
+    const invalid = [];
+    // 先统一换行，再按单个分隔符切分（不能用 + 合并，否则「空行跳过某张」的语义会丢）
+    const flat = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+    const tokens = flat.split(/[\n;；,，]/);
+    for (let i = 0; i < tokens.length; i++) {
+      const original = tokens[i].trim();
+      if (!original) { slots.push(null); continue; }
+      const s = original.replace(/^\d{1,2}\s*[.、)]\s*/, '');   // 「1. / 2、/ 3)」序号前缀
+      const m = RANGE_RE.exec(s);
+      if (!m) { invalid.push({ line: i + 1, text: original }); slots.push(null); continue; }
+      const h1 = +m[4], n1 = +m[5], h2 = +m[6], n2 = +m[7];
+      if (h1 > 23 || n1 > 59 || h2 > 23 || n2 > 59) {
+        invalid.push({ line: i + 1, text: original });
+        slots.push(null);
+        continue;
+      }
+      slots.push({
+        start: pad2(h1) + ':' + pad2(n1),
+        end: pad2(h2) + ':' + pad2(n2),
+        date: m[1] ? m[1] + '.' + pad2(+m[2]) + '.' + pad2(+m[3]) : null
+      });
+    }
+    while (slots.length && slots[slots.length - 1] === null) slots.pop();
+    return { slots, invalid };
+  }
+
+  const toMin = (h, m) => h * 60 + m;
+
+  /** 在区间内随机取一个时间点 → 'HH:MM'（闭区间，含两端）
+   *  区间是「取值范围」，不是要显示的内容：每张图各取一个点当拍摄时间。
+   *  跨天区间（23:50-00:10）按 24 小时回绕；区间只有一个点时就取它。 */
+  function pickShotTime(range) {
+    if (!range || !range.start || !range.end) return null;
+    const s = toMin(+range.start.slice(0, 2), +range.start.slice(3, 5));
+    const e = toMin(+range.end.slice(0, 2), +range.end.slice(3, 5));
+    const span = (e - s + 1440) % 1440;              // 0 = 只有一个时间点
+    const t = (s + Math.floor(Math.random() * (span + 1))) % 1440;
+    return pad2(Math.floor(t / 60)) + ':' + pad2(t % 60);
+  }
+
+  /** 行文本：有随机时间点时 datetime → 「日期 时刻」、time → 「时刻」；
+   *  没有（或无关行类型）时与 formatDate 完全一致。 */
+  function formatShot(date, type, shot, dateOverride) {
+    if (!shot) return formatDate(date, type);
+    if (type === 'time') return shot;
+    if (type === 'datetime') return (dateOverride || formatDate(date, 'date')) + ' ' + shot;
+    return formatDate(date, type);
   }
 
   function randomCode(len) {
@@ -692,6 +763,7 @@
   const api = {
     createRenderer, DEFAULTS, M,
     roundRect, shade, parseHex, randomCode, formatDate,
+    parseTimeRanges, pickShotTime, formatShot,
     wrapLS, measureLS, fillLS, lsFont, clamp
   };
   global.FreyaWM = api;

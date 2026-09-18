@@ -34,9 +34,11 @@ const appJs = read(path.join(src, 'app.js'));
 const banner = (name) => `\n<!-- ===================== ${name} ===================== -->\n`;
 
 // 1. 内联 CSS
+//    注意：替换值必须用「函数」形式 —— 否则 CSS/JS 源码里的 $&、$'、$1 等
+//    会被 String.replace 当成特殊替换模式，静默改坏产物（踩过一次）。
 html = html.replace(
   /<link rel="stylesheet" href="styles\.css">/,
-  '<style>\n' + css.trim() + '\n</style>'
+  () => '<style>\n' + css.trim() + '\n</style>'
 );
 
 // 2. 内联脚本（logo-data.js 由构建生成）
@@ -49,7 +51,7 @@ const scripts = [
 
 html = html.replace(
   /<script src="zip\.js"><\/script>[\s\S]*?<script src="app\.js"><\/script>/,
-  scripts.trim()
+  () => scripts.trim()
 );
 
 if (/<script src=/.test(html) || /href="styles\.css"/.test(html)) {
