@@ -262,8 +262,10 @@
   }
 
   const ROW_IDS = [1, 2, 3].map((i) => ({
-    on: 'r' + i + 'on', label: 'r' + i + 'label', type: 'r' + i + 'type', text: 'r' + i + 'text', idx: i - 1
+    on: 'r' + i + 'on', label: 'r' + i + 'label', type: 'r' + i + 'type', text: 'r' + i + 'text', idx: i - 1,
+    ph: '自定义文本内容'
   }));
+  ROW_IDS[1].ph = '地点内容，可留空';       // r2 的占位文字与其它行不同，先记下来，切换行类型时恢复
 
   function readUI() {
     const p = state.params;
@@ -338,6 +340,8 @@
     ROW_IDS.forEach((r) => {
       const off = !$(r.on).checked;
       $(r.on).closest('.field').classList.toggle('off', off);
+      // 「自定义日期+随机时间」类型下，同一行文本框改成填日期，占位文字随之变化
+      $(r.text).placeholder = $(r.type).value === 'customdate' ? '2026.08.19（日期）' : r.ph;
     });
 
     syncRangeMap();          // 列表/勾选框变化后刷新映射清单与状态
@@ -394,11 +398,21 @@
   }
 
   /* ---------------- 行内容求值 ---------------- */
+  /* 「自定义日期+随机时间」行：日期来自该行文本框（如 2026.08.19），
+   * 时间来自区间内随机到的 item.shot；没写日期时退回区间自带日期 / 图片自身日期。 */
+  function customRowDate(r, item) {
+    return WM.normalizeDate(r.text) ||
+      (item && item.range && item.range.date) ||
+      null;
+  }
+
   function rowsFor(item) {
     const p = state.params;
     return p.rows.map((r) => {
       let value = r.text;
-      if (r.type === 'datetime' || r.type === 'date' || r.type === 'time') {
+      if (r.type === 'customdate') {
+        value = WM.formatShot((item && item.date) || new Date(), 'datetime', item && item.shot, customRowDate(r, item));
+      } else if (r.type === 'datetime' || r.type === 'date' || r.type === 'time') {
         // 分配了时间段时，datetime/time 行显示「日期 + 区间内随机到的时刻」；否则仍是单个时间
         value = WM.formatShot((item && item.date) || new Date(), r.type, item && item.shot,
           item && item.range && item.range.date);
@@ -849,22 +863,23 @@
     });
 
     // 快捷按钮（会改写行内容 → 一并持久化）
+    /* 普通行：写入完整时间并切成「自定义文本」；
+     * 若当前是「自定义日期+随机时间」行，则只写日期、类型保持不变（免得把随机时间弄丢）。 */
+    const fillRow = (textId, d) => {
+      const t = $(textId);
+      const ty = $(textId.replace('text', 'type'));
+      if (ty.value === 'customdate') t.value = WM.formatDate(d, 'date');
+      else { t.value = WM.formatDate(d, 'datetime'); ty.value = 'text'; }
+      t.dataset.manual = '1';
+      readUI(); scheduleRender(); saveParams();
+    };
     document.querySelectorAll('[data-now]').forEach((b) => {
-      b.onclick = () => {
-        const t = $(b.dataset.now);
-        t.value = WM.formatDate(new Date(), 'datetime');
-        t.dataset.manual = '1';
-        $(b.dataset.now.replace('text', 'type')).value = 'text';
-        readUI(); scheduleRender(); saveParams();
-      };
+      b.onclick = () => fillRow(b.dataset.now, new Date());
     });
     document.querySelectorAll('[data-filetime]').forEach((b) => {
       b.onclick = () => {
         const item = state.items[state.active];
-        const d = (item && item.date) || new Date();
-        $(b.dataset.filetime).value = WM.formatDate(d, 'datetime');
-        $(b.dataset.filetime.replace('text', 'type')).value = 'text';
-        readUI(); scheduleRender(); saveParams();
+        fillRow(b.dataset.filetime, (item && item.date) || new Date());
       };
     });
 

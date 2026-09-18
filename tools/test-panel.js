@@ -14,6 +14,9 @@ const ranges = [...html.matchAll(/<input type="range" id="([^"]+)"([^>]*)>/g)].m
   return { id: m[1], min: g('min'), max: g('max'), step: g('step'), value: g('value') };
 });
 const store = {};
+/** 记录画到 canvas 上的所有 fillText 文字（校验水印最终内容） */
+const drawn = [];
+const drawnText = () => drawn.join('').replace(/\s+/g, '');
 
 function mkEl(tag, id) {
   const L = {};
@@ -88,6 +91,7 @@ function mkEl(tag, id) {
         get: (t, k) => {
           if (k === 'measureText') return () => ({ width: 0 });
           if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => grad;
+          if (k === 'fillText') return (s) => { drawn.push(String(s)); };   // 记录真正画上去的文字
           return noop;
         }
       });
@@ -126,8 +130,10 @@ function defineClassSync(el) {
 }
 
 /* 组装：.ctl > label + output + input[type=range]（与真实 HTML 结构一致）
- * 封装成 bootOnce()，便于测「刷新后恢复」时重新装配一次。 */
-let els = {};
+ * 封装成 bootOnce()，便于测「刷新后恢复」时重新装配一次。
+ * 每次 boot 都用**自己的一套元素**（doc.getElementById 闭包本地的 myEls），
+ * 否则第二次 boot 会把第一次那个 app 实例的 DOM 查询偷偷换掉（踩过一次）。 */
+let els = {};          // 最近一次 boot 的元素，供 ①～⑦ 的断言工具用
 let ctls = [];
 let win = null;
 
@@ -141,19 +147,21 @@ const OUT2SLIDER = {
 };
 
 function bootOnce() {
-  els = {}; ctls = [];
-  ids.forEach((id) => { els[id] = mkEl('div', id); });
+  const myEls = {}; const myCtls = [];
+  ids.forEach((id) => { myEls[id] = mkEl('div', id); });
   // 导出/视图控件的初值（与 src/index.html 一致）
-  els.format.value = 'image/jpeg'; els.quality.value = '92'; els.nameTpl.value = '{name}_watermark';
-  els.maxEdge.value = '0'; els.fitView.checked = true;
-  els.title.value = '南京云之宝智算中心'; els.codeLen.value = '14'; els.codeLabel.value = '防伪';
-  els.fontFamily.value = 'SimHei, Heiti SC, Microsoft YaHei, PingFang SC, sans-serif';
-  els.accent.value = '#15a7fa'; els.dotColor.value = '#f4c647'; els.bgColor.value = '#f5f5f5';
-  els.textColor.value = '#111111'; els.showTable.checked = true; els.showLogo.checked = true;
-  els.showCode.checked = true;
+  const e = myEls;
+  e.format.value = 'image/jpeg'; e.quality.value = '92'; e.nameTpl.value = '{name}_watermark';
+  e.maxEdge.value = '0'; e.fitView.checked = true;
+  e.title.value = '南京云之宝智算中心'; e.codeLen.value = '14'; e.codeLabel.value = '防伪';
+  e.fontFamily.value = 'SimHei, Heiti SC, Microsoft YaHei, PingFang SC, sans-serif';
+  e.accent.value = '#15a7fa'; e.dotColor.value = '#f4c647'; e.bgColor.value = '#f5f5f5';
+  e.textColor.value = '#111111'; e.showTable.checked = true; e.showLogo.checked = true;
+  e.showCode.checked = true;
   ['r1', 'r2', 'r3'].forEach((r, i) => {
-    els[r + 'on'].checked = i < 2; els[r + 'label'].value = 'L' + i;
-    els[r + 'type'].value = 'text'; els[r + 'text'].value = 'T' + i;
+    e[r + 'on'].checked = i < 2; e[r + 'label'].value = 'L' + i;
+    e[r + 'type'].value = 'text'; e[r + 'text'].value = 'T' + i;
+    e[r + 'text'].placeholder = i === 1 ? '地点内容，可留空' : '自定义文本内容';
   });
   for (const o of outs) {
     const sid = OUT2SLIDER[o.id];
@@ -161,29 +169,33 @@ function bootOnce() {
     if (!r) continue;
     const ctl = mkEl('div'); ctl.classList.add('ctl');
     const label = mkEl('label');
-    // 必须复用 els 里的同一对象：app.js 通过 getElementById 拿到的就是它
-    const out = els[o.id];
+    // 必须复用 myEls 里的同一对象：app.js 通过 getElementById 拿到的就是它
+    const out = myEls[o.id];
     out.tagName = 'OUTPUT';
     out.textContent = o.text;
-    const slider = els[sid];
+    const slider = myEls[sid];
     slider.tagName = 'INPUT'; slider.type = 'range';
     slider.min = r.min; slider.max = r.max; slider.step = r.step; slider.value = r.value;
     label.appendChild(out);
     ctl.appendChild(label);
     ctl.appendChild(slider);
-    ctls.push({ ctl, out, slider, id: o.id });
+    myCtls.push({ ctl, out, slider, id: o.id });
   }
+  const nowBtns = [{ dataset: { now: 'r1text' }, onclick: null }];
+  const fileBtns = [{ dataset: { filetime: 'r1text' }, onclick: null }];
   const doc = {
     body: mkEl('body'),
-    getElementById: (id) => els[id] || (els[id] = mkEl('div', id)),
+    getElementById: (id) => myEls[id] || (myEls[id] = mkEl('div', id)),
     createElement: (t) => mkEl(t),
-    querySelectorAll: (sel) => (sel === 'output' ? ctls.map((c) => c.out) : []),
+    querySelectorAll: (sel) => (sel === 'output' ? myCtls.map((c) => c.out)
+      : sel === '[data-now]' ? nowBtns
+        : sel === '[data-filetime]' ? fileBtns : []),
     addEventListener() {}
   };
-  win = { addEventListener() {}, FREYA_LOGO_DATA_URL: '' };
+  const myWin = { addEventListener() {}, FREYA_LOGO_DATA_URL: '' };
   const urlStub = { createObjectURL: (f) => 'blob:fake/' + (f && f.name ? f.name : 'x'), revokeObjectURL() {} };
   new Function('window', 'document', 'localStorage', 'requestAnimationFrame', 'Image', 'Event', 'setTimeout', 'URL', scripts.join('\n'))(
-    win, doc,
+    myWin, doc,
     { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } },
     (cb) => setTimeout(cb, 0),
     function () {   // 假 Image：src 赋值后异步触发 onload（与 test-render.js 一致）
@@ -195,7 +207,9 @@ function bootOnce() {
       });
     },
     function (t) { this.type = t; }, setTimeout, urlStub);
-  return { win, els, ctls, doc };
+  win = myWin;
+  els = myEls; ctls = myCtls;      // 供 ①～⑦ 的断言工具用
+  return { win: myWin, els: myEls, ctls: myCtls, doc, btns: { now: nowBtns, filetime: fileBtns } };
 }
 bootOnce();
 
@@ -486,6 +500,58 @@ const NAMES = ['IMG_0001.jpg', 'IMG_0002.jpg', 'IMG_0003.jpg', 'IMG_0004.jpg'];
     t('重启后时间段框文本恢复', b2.els.rangesText.value === '07:08-07:23\n11:33-11:48');
     t('重启后「导入时自动分配」保持未勾选', b2.els.rangeAuto.checked === false);
     t('重启后队列为空（队列本来就不持久化，重新导入会重新随机）', b2.win.__freya.items.length === 0);
+  }
+
+  console.log('\n⑱ 「自定义日期+随机时间」行类型（日期来自行文本框，时间来自区间随机）');
+  {
+    E.btnClear.dispatch('click');
+    E.rangeAuto.checked = true; E.rangeAuto.dispatch('change');
+    setText(E.rangesText, USER_RANGES);
+    await importFiles(NAMES);
+
+    E.r1type.value = 'customdate'; E.r1type.dispatch('change');
+    t('切到该类型后占位文字变成日期提示', E.r1text.placeholder === '2026.08.19（日期）', E.r1text.placeholder);
+    t('状态/映射清单不受影响', E.rangeStatus.textContent === '4 个时间段 · 已与队列一致', E.rangeStatus.textContent);
+
+    drawn.length = 0;
+    setText(E.r1text, '2026-8-9');          // 顺带验证宽松格式与自动补零
+    await flush(150);
+    const want = '2026.08.09' + S.items[0].shot;
+    t('画到图上的拍摄时间 = 自定义日期 + 区间随机时刻', drawnText().includes(want), 'want=' + want + ' got=' + drawnText().slice(0, 120));
+
+    drawn.length = 0;
+    setText(E.r1text, '不是日期');           // 日期写错 → 退回图片自身日期
+    await flush(150);
+    t('日期填错时退回图片自身日期（不再是 2026.08.09）',
+      !drawnText().includes('2026.08.09') && drawnText().includes('2026.08.19' + S.items[0].shot),
+      drawnText().slice(0, 120));
+
+    // 还没有分配时间段时：自定义日期 + 图片自身时间（至少日期是自定义的）
+    E.btnClearRanges.dispatch('click');
+    drawn.length = 0;
+    setText(E.r1text, '2025.01.02');        // 触发重绘
+    await flush(150);
+    t('没有时间段时 = 自定义日期 + 图片自身时间',
+      drawnText().includes('2025.01.02' + WM.formatDate(S.items[0].date, 'time')),
+      drawnText().slice(0, 120));
+
+    // 快捷按钮：自定义日期行上只写日期、不把类型改掉
+    b.btns.filetime[0].onclick();
+    t('「用图片时间」只写入日期', E.r1text.value === '2026.08.19', E.r1text.value);
+    t('「用图片时间」保持「自定义日期+随机时间」类型', E.r1type.value === 'customdate', E.r1type.value);
+    b.btns.now[0].onclick();
+    t('「用当前时间」也只写入日期', /^\d{4}\.\d{2}\.\d{2}$/.test(E.r1text.value), E.r1text.value);
+    t('「用当前时间」同样保持类型', E.r1type.value === 'customdate', E.r1type.value);
+
+    // 切回普通类型：占位文字恢复
+    E.r1type.value = 'datetime'; E.r1type.dispatch('change');
+    t('切回「拍摄时间」后占位文字恢复', E.r1text.placeholder === '自定义文本内容', E.r1text.placeholder);
+    drawn.length = 0;
+    setText(E.r1text, '2026.08.19 10:59');
+    await flush(150);
+    t('切回后日期重新来自图片文件（自定义日期不再生效）',
+      !drawnText().includes('2026.08.09') && !drawnText().includes('2025.01.02'),
+      drawnText().slice(0, 120));
   }
 
   console.log('\n' + (bad ? '✗ ' + bad + ' 项失败 / 共 ' + (ok + bad) : '✓ 全部通过（' + ok + ' 项）'));

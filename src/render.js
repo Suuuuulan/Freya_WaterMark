@@ -186,13 +186,31 @@
     return pad2(Math.floor(t / 60)) + ':' + pad2(t % 60);
   }
 
-  /** 行文本：有随机时间点时 datetime → 「日期 时刻」、time → 「时刻」；
-   *  没有（或无关行类型）时与 formatDate 完全一致。 */
+  /* 日期文本：从「2026.08.19 / 2026-8-9 / 2026/8/9 / 2026年8月19日」里取出日期，
+   * 后面的时间等内容忽略（所以 r1 默认的 "2026.08.19 10:59" 可以直接当自定义日期用）。
+   * 分隔符要和上面 RANGE_DATE 保持一致；无效日期（如 2026.02.31）返回 null。 */
+  const DATE_RE = /^\s*(\d{4})\s*[-.\/年]\s*(\d{1,2})\s*[-.\/月]\s*(\d{1,2})\s*日?/;
+
+  function normalizeDate(text) {
+    const m = DATE_RE.exec(String(text == null ? '' : text));
+    if (!m) return null;
+    const y = +m[1], mo = +m[2], d = +m[3];
+    const dt = new Date(y, mo - 1, d);
+    if (mo < 1 || mo > 12 || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+    return y + '.' + pad2(mo) + '.' + pad2(d);
+  }
+
+  /** 行文本：日期部分 + 时刻部分，两者都可分别覆盖，缺省就用图片自己的。
+   *  - date   行 → 日期（可覆盖，如自定义日期）
+   *  - time   行 → 时刻（优先区间内随机到的 shot，没有就用图片自身时间）
+   *  - datetime 行 → 「日期 时刻」（两者各自覆盖/回退）
+   *  没有任何覆盖时与 formatDate 完全一致。 */
   function formatShot(date, type, shot, dateOverride) {
-    if (!shot) return formatDate(date, type);
-    if (type === 'time') return shot;
-    if (type === 'datetime') return (dateOverride || formatDate(date, 'date')) + ' ' + shot;
-    return formatDate(date, type);
+    const d = dateOverride || formatDate(date, 'date');
+    const t = shot || formatDate(date, 'time');
+    if (type === 'date') return d;
+    if (type === 'time') return t;
+    return d + ' ' + t;
   }
 
   function randomCode(len) {
@@ -763,7 +781,7 @@
   const api = {
     createRenderer, DEFAULTS, M,
     roundRect, shade, parseHex, randomCode, formatDate,
-    parseTimeRanges, pickShotTime, formatShot,
+    parseTimeRanges, pickShotTime, formatShot, normalizeDate,
     wrapLS, measureLS, fillLS, lsFont, clamp
   };
   global.FreyaWM = api;

@@ -534,6 +534,23 @@ setTimeout(() => {
   check('没有随机时刻时完全等于 formatDate（time）', FS(d, 'time', null) === '10:59');
   check('日期前缀优先于图片自身日期', FS(d, 'datetime', '07:11', '2025.01.02') === '2025.01.02 07:11',
     FS(d, 'datetime', '07:11', '2025.01.02'));
+  check('给了自定义日期、还没有随机时刻时 → 自定义日期 + 图片自身时间',
+    FS(d, 'datetime', null, '2025.01.02') === '2025.01.02 10:59', FS(d, 'datetime', null, '2025.01.02'));
+  check('date 行也能用自定义日期', FS(d, 'date', null, '2025.01.02') === '2025.01.02');
+
+  console.log('\n12) 自定义日期解析 normalizeDate');
+  const ND = WM.normalizeDate;
+  check('2026.08.19 → 2026.08.19', ND('2026.08.19') === '2026.08.19');
+  check('2026-8-9 → 2026.08.09（自动补零）', ND('2026-8-9') === '2026.08.09', String(ND('2026-8-9')));
+  check('2026/8/9 → 2026.08.09', ND('2026/8/9') === '2026.08.09', String(ND('2026/8/9')));
+  check('2026年8月19日 → 2026.08.19', ND('2026年8月19日') === '2026.08.19', String(ND('2026年8月19日')));
+  check('带时间也能只取日期（2026.08.19 10:59）', ND('2026.08.19 10:59') === '2026.08.19', String(ND('2026.08.19 10:59')));
+  check('前后空格忽略', ND('  2026.08.19  ') === '2026.08.19', String(ND('  2026.08.19  ')));
+  check('不是日期 → null', ND('不是日期') === null && ND('') === null && ND(null) === null && ND(undefined) === null);
+  check('不存在的日期 2026.02.31 → null', ND('2026.02.31') === null, String(ND('2026.02.31')));
+  check('月份越界 2026.13.01 → null', ND('2026.13.01') === null, String(ND('2026.13.01')));
+  check('DEFAULTS 的 r1 默认文本可直接当自定义日期用',
+    ND(WM.DEFAULTS.rows[0].text) === '2026.08.19', String(ND(WM.DEFAULTS.rows[0].text)));
   check('DEFAULTS.rangesText 解析出用户要的 4 个区间，且每个都能取到区间内的时刻', (() => {
     const r = WM.parseTimeRanges(WM.DEFAULTS.rangesText);
     if (r.slots.length !== 4) return false;

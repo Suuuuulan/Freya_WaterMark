@@ -464,6 +464,7 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
           <input type="text" id="r1label" value="拍摄时间:" placeholder="标签">
           <select id="r1type">
             <option value="datetime">拍摄时间</option>
+            <option value="customdate">自定义日期+随机时间</option>
             <option value="date">仅日期</option>
             <option value="time">仅时间</option>
             <option value="text">自定义文本</option>
@@ -486,6 +487,7 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
           <select id="r2type">
             <option value="text">自定义文本</option>
             <option value="datetime">拍摄时间</option>
+            <option value="customdate">自定义日期+随机时间</option>
             <option value="date">仅日期</option>
             <option value="time">仅时间</option>
           </select>
@@ -503,6 +505,7 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
           <select id="r3type">
             <option value="text">自定义文本</option>
             <option value="datetime">拍摄时间</option>
+            <option value="customdate">自定义日期+随机时间</option>
             <option value="date">仅日期</option>
             <option value="time">仅时间</option>
           </select>
@@ -1012,13 +1015,31 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     return pad2(Math.floor(t / 60)) + ':' + pad2(t % 60);
   }
 
-  /** 行文本：有随机时间点时 datetime → 「日期 时刻」、time → 「时刻」；
-   *  没有（或无关行类型）时与 formatDate 完全一致。 */
+  /* 日期文本：从「2026.08.19 / 2026-8-9 / 2026/8/9 / 2026年8月19日」里取出日期，
+   * 后面的时间等内容忽略（所以 r1 默认的 "2026.08.19 10:59" 可以直接当自定义日期用）。
+   * 分隔符要和上面 RANGE_DATE 保持一致；无效日期（如 2026.02.31）返回 null。 */
+  const DATE_RE = /^\s*(\d{4})\s*[-.\/年]\s*(\d{1,2})\s*[-.\/月]\s*(\d{1,2})\s*日?/;
+
+  function normalizeDate(text) {
+    const m = DATE_RE.exec(String(text == null ? '' : text));
+    if (!m) return null;
+    const y = +m[1], mo = +m[2], d = +m[3];
+    const dt = new Date(y, mo - 1, d);
+    if (mo < 1 || mo > 12 || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+    return y + '.' + pad2(mo) + '.' + pad2(d);
+  }
+
+  /** 行文本：日期部分 + 时刻部分，两者都可分别覆盖，缺省就用图片自己的。
+   *  - date   行 → 日期（可覆盖，如自定义日期）
+   *  - time   行 → 时刻（优先区间内随机到的 shot，没有就用图片自身时间）
+   *  - datetime 行 → 「日期 时刻」（两者各自覆盖/回退）
+   *  没有任何覆盖时与 formatDate 完全一致。 */
   function formatShot(date, type, shot, dateOverride) {
-    if (!shot) return formatDate(date, type);
-    if (type === 'time') return shot;
-    if (type === 'datetime') return (dateOverride || formatDate(date, 'date')) + ' ' + shot;
-    return formatDate(date, type);
+    const d = dateOverride || formatDate(date, 'date');
+    const t = shot || formatDate(date, 'time');
+    if (type === 'date') return d;
+    if (type === 'time') return t;
+    return d + ' ' + t;
   }
 
   function randomCode(len) {
@@ -1589,7 +1610,7 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
   const api = {
     createRenderer, DEFAULTS, M,
     roundRect, shade, parseHex, randomCode, formatDate,
-    parseTimeRanges, pickShotTime, formatShot,
+    parseTimeRanges, pickShotTime, formatShot, normalizeDate,
     wrapLS, measureLS, fillLS, lsFont, clamp
   };
   global.FreyaWM = api;
@@ -1863,8 +1884,10 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
   }
 
   const ROW_IDS = [1, 2, 3].map((i) => ({
-    on: 'r' + i + 'on', label: 'r' + i + 'label', type: 'r' + i + 'type', text: 'r' + i + 'text', idx: i - 1
+    on: 'r' + i + 'on', label: 'r' + i + 'label', type: 'r' + i + 'type', text: 'r' + i + 'text', idx: i - 1,
+    ph: '自定义文本内容'
   }));
+  ROW_IDS[1].ph = '地点内容，可留空';       // r2 的占位文字与其它行不同，先记下来，切换行类型时恢复
 
   function readUI() {
     const p = state.params;
@@ -1939,6 +1962,8 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     ROW_IDS.forEach((r) => {
       const off = !$(r.on).checked;
       $(r.on).closest('.field').classList.toggle('off', off);
+      // 「自定义日期+随机时间」类型下，同一行文本框改成填日期，占位文字随之变化
+      $(r.text).placeholder = $(r.type).value === 'customdate' ? '2026.08.19（日期）' : r.ph;
     });
 
     syncRangeMap();          // 列表/勾选框变化后刷新映射清单与状态
@@ -1995,11 +2020,21 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
   }
 
   /* ---------------- 行内容求值 ---------------- */
+  /* 「自定义日期+随机时间」行：日期来自该行文本框（如 2026.08.19），
+   * 时间来自区间内随机到的 item.shot；没写日期时退回区间自带日期 / 图片自身日期。 */
+  function customRowDate(r, item) {
+    return WM.normalizeDate(r.text) ||
+      (item && item.range && item.range.date) ||
+      null;
+  }
+
   function rowsFor(item) {
     const p = state.params;
     return p.rows.map((r) => {
       let value = r.text;
-      if (r.type === 'datetime' || r.type === 'date' || r.type === 'time') {
+      if (r.type === 'customdate') {
+        value = WM.formatShot((item && item.date) || new Date(), 'datetime', item && item.shot, customRowDate(r, item));
+      } else if (r.type === 'datetime' || r.type === 'date' || r.type === 'time') {
         // 分配了时间段时，datetime/time 行显示「日期 + 区间内随机到的时刻」；否则仍是单个时间
         value = WM.formatShot((item && item.date) || new Date(), r.type, item && item.shot,
           item && item.range && item.range.date);
@@ -2450,22 +2485,23 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     });
 
     // 快捷按钮（会改写行内容 → 一并持久化）
+    /* 普通行：写入完整时间并切成「自定义文本」；
+     * 若当前是「自定义日期+随机时间」行，则只写日期、类型保持不变（免得把随机时间弄丢）。 */
+    const fillRow = (textId, d) => {
+      const t = $(textId);
+      const ty = $(textId.replace('text', 'type'));
+      if (ty.value === 'customdate') t.value = WM.formatDate(d, 'date');
+      else { t.value = WM.formatDate(d, 'datetime'); ty.value = 'text'; }
+      t.dataset.manual = '1';
+      readUI(); scheduleRender(); saveParams();
+    };
     document.querySelectorAll('[data-now]').forEach((b) => {
-      b.onclick = () => {
-        const t = $(b.dataset.now);
-        t.value = WM.formatDate(new Date(), 'datetime');
-        t.dataset.manual = '1';
-        $(b.dataset.now.replace('text', 'type')).value = 'text';
-        readUI(); scheduleRender(); saveParams();
-      };
+      b.onclick = () => fillRow(b.dataset.now, new Date());
     });
     document.querySelectorAll('[data-filetime]').forEach((b) => {
       b.onclick = () => {
         const item = state.items[state.active];
-        const d = (item && item.date) || new Date();
-        $(b.dataset.filetime).value = WM.formatDate(d, 'datetime');
-        $(b.dataset.filetime.replace('text', 'type')).value = 'text';
-        readUI(); scheduleRender(); saveParams();
+        fillRow(b.dataset.filetime, (item && item.date) || new Date());
       };
     });
 
