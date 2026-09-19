@@ -58,7 +58,8 @@
     </section>
 
     <section class="card">
-      <h2>2 · 位置与尺寸</h2>
+      <h2 class="card-h" data-card="2">2 · 位置与尺寸<span class="caret"></span></h2>
+      <div class="card-body">
       <div class="ctl">
         <label>水印位置</label>
         <div class="seg" id="segPos">
@@ -91,101 +92,148 @@
         <input type="range" id="tableOpacity" min="0" max="100" value="100">
       </div>
       <div class="ctl small muted">提示：选中图片后可用方向键微调边距（按住 Shift 加大步长）。</div>
+      </div>
     </section>
 
     <section class="card">
-      <h2>3 · 表格内容</h2>
+      <h2 class="card-h" data-card="3">3 · 表格内容</h2>
+      <div class="card-body">
       <div class="ctl">
         <label>顶部标题</label>
         <input type="text" id="title" value="南京云之宝智算中心" placeholder="例如：某某公司项目部">
       </div>
+      <div class="grp">标题文字属性</div>
       <div class="ctl grid2">
         <div>
-          <label>标题字号 <output id="outTitleScale">100%</output></label>
+          <label>字号 <output id="outTitleScale">100%</output></label>
           <input type="range" id="titleFontScale" min="40" max="200" value="100">
         </div>
         <div>
-          <label>标题字高 <output id="outTitleHeight">100%</output></label>
+          <label>字高 <output id="outTitleHeight">100%</output></label>
           <input type="range" id="titleHeightScale" min="50" max="200" value="100">
         </div>
       </div>
       <div class="ctl grid2">
         <div>
-          <label>标题行高 <output id="outTitleLineH">1.50</output></label>
+          <label>行高 <output id="outTitleLineH">1.50</output></label>
           <input type="range" id="titleLineHeightRatio" min="1" max="2.5" step="0.05" value="1.5">
         </div>
         <div>
-          <label>顶栏高度加成 <output id="outHeaderPad">180%</output></label>
+          <label>行间距 <output id="outTitleLineGap">0.00</output></label>
+          <input type="range" id="titleLineGapRatio" min="0" max="1.2" step="0.02" value="0">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>字间距 <output id="outTitleLS">5</output>px</label>
+          <input type="range" id="titleLS" min="0" max="40" step="1" value="5">
+        </div>
+        <div>
+          <label>顶栏高度 <output id="outHeaderPad">180%</output></label>
           <input type="range" id="headerPadRatio" min="120" max="320" value="180">
         </div>
       </div>
-
-      <div class="ctl field">
-        <div class="field-head">
-          <label>第 1 行</label>
-          <label class="chk"><input type="checkbox" id="r1on" checked><span>显示</span></label>
-        </div>
-        <div class="grid2">
-          <input type="text" id="r1label" value="拍摄时间:" placeholder="标签">
-          <select id="r1type">
-            <option value="datetime">拍摄时间</option>
-            <option value="customdate">自定义日期+随机时间</option>
-            <option value="date">仅日期</option>
-            <option value="time">仅时间</option>
-            <option value="text">自定义文本</option>
-          </select>
-        </div>
-        <input type="text" id="r1text" value="2026.08.19 10:59" placeholder="自定义文本内容">
-        <div class="row small">
-          <button class="btn btn-mini" data-now="r1text" type="button">用当前时间</button>
-          <button class="btn btn-mini" data-filetime="r1text" type="button">用图片时间</button>
-        </div>
+      <div class="small muted" style="margin:-4px 0 10px">
+        字号 = 参考字号 × 倍率（不再跟随正文）；字高只把字形纵向拉高（不改排版）；
+        行间距只在标题折行时起作用（行距 = 行高 + 行间距）。
       </div>
 
-      <div class="ctl field">
-        <div class="field-head">
-          <label>第 2 行</label>
-          <label class="chk"><input type="checkbox" id="r2on" checked><span>显示</span></label>
-        </div>
-        <div class="grid2">
-          <input type="text" id="r2label" value="地　　点:" placeholder="标签">
-          <select id="r2type">
-            <option value="text">自定义文本</option>
-            <option value="datetime">拍摄时间</option>
-            <option value="customdate">自定义日期+随机时间</option>
-            <option value="date">仅日期</option>
-            <option value="time">仅时间</option>
-          </select>
-        </div>
-        <textarea id="r2text" rows="2" placeholder="地点内容，可留空">南京市江宁区·南京绿地国际花都2期</textarea>
+      <div class="grp">行内容（可增删）</div>
+      <div id="rowsBox"></div>
+      <div class="ctl">
+        <button class="btn btn-mini" id="btnAddRow" type="button">＋ 添加一行</button>
+        <span class="small muted" id="rowHint">默认两行：拍摄时间、地点</span>
       </div>
-
-      <div class="ctl field">
-        <div class="field-head">
-          <label>第 3 行</label>
-          <label class="chk"><input type="checkbox" id="r3on"><span>显示</span></label>
-        </div>
-        <div class="grid2">
-          <input type="text" id="r3label" value="备注:" placeholder="标签">
-          <select id="r3type">
-            <option value="text">自定义文本</option>
-            <option value="datetime">拍摄时间</option>
-            <option value="customdate">自定义日期+随机时间</option>
-            <option value="date">仅日期</option>
-            <option value="time">仅时间</option>
-          </select>
-        </div>
-        <input type="text" id="r3text" value="" placeholder="自定义文本内容">
-      </div>
-
       <div class="ctl">
         <label>标签列宽 <output id="outLabelW">100%</output></label>
         <input type="range" id="labelW" min="40" max="220" value="100">
       </div>
+      </div>
     </section>
 
     <section class="card">
-      <h2>4 · 外观样式</h2>
+      <h2 class="card-h" data-card="4">4 · 正文与白色区域</h2>
+      <div class="card-body">
+      <div class="grp">正文文字属性</div>
+      <div class="ctl grid2">
+        <div>
+          <label>字号 <output id="outBodyFont">120%</output></label>
+          <input type="range" id="bodyFontScale" min="40" max="250" value="120">
+        </div>
+        <div>
+          <label>字高 <output id="outBodyHeight">100%</output></label>
+          <input type="range" id="bodyHeightScale" min="50" max="200" value="100">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>行高 <output id="outLineH">1.35</output></label>
+          <input type="range" id="lineHeightRatio" min="1" max="3" step="0.05" value="1.35">
+        </div>
+        <div>
+          <label>行间距 <output id="outRowGap">0.18</output></label>
+          <input type="range" id="rowGapRatio" min="0" max="1.2" step="0.02" value="0.18">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>字间距 <output id="outBodyLS">0.00</output>em</label>
+          <input type="range" id="bodyLS" min="-0.05" max="0.8" step="0.01" value="0">
+        </div>
+        <div>
+          <label>标签字间距 <output id="outLabelLS">0.19</output>em</label>
+          <input type="range" id="labelLS" min="0" max="0.6" step="0.01" value="0.185">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>冒号后间距 <output id="outValueGap">0.20</output>em</label>
+          <input type="range" id="valueGapRatio" min="0" max="1.2" step="0.02" value="0.2">
+        </div>
+        <div>
+          <label>标签列宽 <output id="outLabelW">100%</output></label>
+          <input type="range" id="labelW" min="40" max="220" value="100">
+        </div>
+      </div>
+      <div class="small muted" style="margin:-4px 0 10px">
+        字高只把字形纵向拉高（会溢出相邻行时请配合调大行高）；字号 = 参考字号 × 倍率。
+      </div>
+
+      <div class="grp">行间分隔线</div>
+      <div class="ctl grid2">
+        <div>
+          <label>粗细 <output id="outSepH">1</output>px</label>
+          <input type="range" id="rowSepH" min="0" max="12" step="0.5" value="1">
+        </div>
+        <div>
+          <label>浓度 <output id="outSepAlpha">0.18</output></label>
+          <input type="range" id="rowSepAlpha" min="0" max="0.8" step="0.02" value="0.18">
+        </div>
+      </div>
+      <div class="small muted" style="margin:-4px 0 10px">
+        分隔线左右顶到白区两端，垂直方向落在两行正中间；粗细实占高度，调粗会把行推开、不盖文字。
+      </div>
+
+      <div class="grp">白区上下留白</div>
+      <div class="ctl grid2">
+        <div>
+          <label>顶部留白 <output id="outBodyPadTop">100%</output></label>
+          <input type="range" id="bodyPadTopRatio" min="0" max="250" step="5" value="100">
+        </div>
+        <div>
+          <label>底部留白 <output id="outBodyPadBottom">100%</output></label>
+          <input type="range" id="bodyPadBottomRatio" min="0" max="250" step="5" value="100">
+        </div>
+      </div>
+      <div class="small muted">
+        顶部/底部留白管白区最上沿到首行、末行到最下沿那两条（100% = 参考图实测值，0% 就贴边）。
+      </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="card-h" data-card="5">5 · 外观样式</h2>
+      <div class="card-body">
       <div class="ctl grid2">
         <div>
           <label>主色（顶栏）</label>
@@ -218,26 +266,6 @@
       </div>
       <div class="ctl grid2">
         <div>
-          <label>标题字距 <output id="outTitleLS">5</output>px</label>
-          <input type="range" id="titleLS" min="0" max="40" step="1" value="5">
-        </div>
-        <div>
-          <label>正文字距 <output id="outBodyLS">0.00</output>em</label>
-          <input type="range" id="bodyLS" min="-0.05" max="0.8" step="0.01" value="0">
-        </div>
-      </div>
-      <div class="ctl grid2">
-        <div>
-          <label>标签字距 <output id="outLabelLS">0.19</output>em</label>
-          <input type="range" id="labelLS" min="0" max="0.6" step="0.01" value="0.185">
-        </div>
-        <div>
-          <label>冒号后间距 <output id="outValueGap">0.20</output>em</label>
-          <input type="range" id="valueGapRatio" min="0" max="1.2" step="0.02" value="0.2">
-        </div>
-      </div>
-      <div class="ctl grid2">
-        <div>
           <label>圆角 <output id="outRadius">16</output></label>
           <input type="range" id="radius" min="0" max="90" value="16">
         </div>
@@ -249,10 +277,12 @@
       <div class="ctl">
         <label class="chk"><input type="checkbox" id="showTable" checked><span>显示信息表格</span></label>
       </div>
+      </div>
     </section>
 
     <section class="card">
-      <h2>5 · 右下角防伪</h2>
+      <h2 class="card-h" data-card="6">6 · 右下角防伪</h2>
+      <div class="card-body">
       <div class="ctl">
         <label class="chk"><input type="checkbox" id="showLogo" checked><span>显示防伪标识（今日水印 logo）</span></label>
       </div>
@@ -280,10 +310,11 @@
       <div class="ctl small muted">
         防伪码在每张图片导出时重新随机生成；预览显示的是「当前预览码」。
       </div>
+      </div>
     </section>
 
     <section class="card">
-      <h2>6 · 输出</h2>
+      <h2>7 · 输出</h2>
       <div class="ctl grid2">
         <div>
           <label>格式</label>

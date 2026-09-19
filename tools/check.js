@@ -29,6 +29,20 @@ else ok(`app.js 引用的 ${usedIds.size} 个 ID 全部存在`);
 const unused = [...htmlIds].filter((id) => !usedIds.has(id));
 if (unused.length) console.log('  · 未被 JS 引用的 ID（正常，可能是纯样式用）: ' + unused.join(', '));
 
+/* ---------- 1b. 标签平衡（面板 HTML 是手工维护的，多一个 div 会静默弄乱排版） ---------- */
+console.log('\n1b) HTML 标签平衡');
+{
+  const count = (re) => (html.match(re) || []).length;
+  const pairs = [['div', /<div\b/g, /<\/div>/g], ['section', /<section\b/g, /<\/section>/g],
+    ['select', /<select\b/g, /<\/select>/g], ['textarea', /<textarea\b/g, /<\/textarea>/g]];
+  let unbal = 0;
+  for (const [name, o, c] of pairs) {
+    const a = count(o), b = count(c);
+    if (a !== b) { fail(`<${name}> 开合不匹配: 开 ${a} / 闭 ${b}`); unbal++; }
+  }
+  if (!unbal) ok('div / section / select / textarea 开合数量一致');
+}
+
 /* ---------- 2. 参数名 ---------- */
 console.log('\n2) 参数名一致性');
 const defBlock = render.slice(render.indexOf('const DEFAULTS = {'), render.indexOf('/* 比例常量'));
@@ -51,8 +65,37 @@ for (const s of [...srcs, ...links]) {
   else fail('缺失: ' + s);
 }
 
-/* ---------- 4. CSS 类 ---------- */
-console.log('\n4) CSS 类');
+/* ---------- 4. 控件绑定方式（回归：就地编辑曾绑错滑块） ---------- */
+console.log('\n4) 控件绑定方式');
+/* .ctl.grid2 里一个 .ctl 装两个滑块，所以「output → closest(.ctl) → 第一个 range」
+ * 会让右半边的数值去改左边那个滑块。必须从滑块出发找自己的 output。 */
+if (/closest\('\.ctl'\)[\s\S]{0,120}querySelector\('input\[type="range"\]'\)/.test(app)) {
+  fail('就地编辑不能通过 closest(\'.ctl\') 找滑块（grid2 里会拿到左边那个）');
+} else {
+  ok('就地编辑按「滑块 → 自身 cell 里的 output」绑定');
+}
+if (/querySelectorAll\('input\[type="range"\]'\)/.test(app)) ok('就地编辑从滑块侧遍历');
+else fail('就地编辑没有按滑块遍历');
+
+/* grid2 结构：滑块与它的 output 必须在同一个 cell 里（否则「滑块 → parentElement → output」取不到） */
+console.log('\n4b) grid2 结构（滑块与数值成对）');
+{
+  const chunks = html.split('<div class="ctl').slice(1).map((s) => s.split('<div class="ctl')[0]);
+  let n = 0;
+  const bad = [];
+  chunks.forEach((s) => {
+    if (!/^ grid2"/.test(s)) return;
+    n++;
+    const outs = [...s.matchAll(/<output id="([^"]+)"/g)].map((m) => m[1]);
+    const ranges2 = [...s.matchAll(/<input type="range" id="([^"]+)"/g)].map((m) => m[1]);
+    if (outs.length !== ranges2.length) bad.push('[output ' + outs.length + ' / range ' + ranges2.length + '] ' + outs.join(',')); 
+  });
+  if (bad.length) fail('grid2 块里 output 与 range 数量不一致: ' + bad.join(' | '));
+  else ok(n + ' 个 .ctl.grid2 块里 output 与 range 一一对应');
+}
+
+/* ---------- 5. CSS 类 ---------- */
+console.log('\n5) CSS 类');
 const cssClasses = new Set([...css.matchAll(/\.([a-zA-Z][a-zA-Z0-9_-]*)/g)].map((m) => m[1]));
 const htmlClasses = new Set();
 for (const m of html.matchAll(/class="([^"]+)"/g)) m[1].split(/\s+/).forEach((c) => c && htmlClasses.add(c));
@@ -65,8 +108,8 @@ const noStyleJs = [...jsClasses].filter((c) => c && !cssClasses.has(c));
 if (noStyleJs.length) fail('JS 动态使用的类无样式: ' + noStyleJs.join(', '));
 else ok('JS 动态类都有样式定义');
 
-/* ---------- 5. 编码 ---------- */
-console.log('\n5) 编码');
+/* ---------- 6. 编码 ---------- */
+console.log('\n6) 编码');
 for (const f of ['src/index.html', 'src/app.js', 'src/render.js', 'src/zip.js', 'src/styles.css', 'build.js']) {
   const b = fs.readFileSync(path.join(root, f));
   const bad = (b.toString('utf8').match(/\uFFFD/g) || []).length;

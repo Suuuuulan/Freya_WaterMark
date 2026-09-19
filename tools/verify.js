@@ -86,7 +86,8 @@ const DES = {
   logoW: 266, logoH: 122, logoBlockH: 158
 };
 /* 表格宽度已回到参考比例；高度随字高 ×1.2 变高属必然结果（表内各行单项标注） */
-const rowPitchRef = 60, rowPitchDes = 73.6;
+/* 行基准间距 = 行高 + 行间距 + 行间分隔线占位（可在面板「表格白色区域」里调） */
+const rowPitchRef = 60, rowPitchDes = 74.6;
 
 const logoH = BASE * WM.M.logoW * (135 / 295);
 const got = {
@@ -136,7 +137,7 @@ for (const [label, ref, val, changed] of rowsOut) {
 }
 console.log('----------------------------------------------------------------');
 console.log('还原度最大偏差（不含按需求调整项）: ' + worst.toFixed(1) + '%  (' + worstName + ')');
-console.log('按需求调整项: ' + changedCount + ' 项（字高 ×1.2 且标题跟随、行距收紧；表格高度随之变高）—— 有意偏离参考图');
+console.log('按需求调整项: ' + changedCount + ' 项（字高 ×1.2、标题字号独立、行距收紧；表格高度随之变高）—— 有意偏离参考图');
 
 /* ---------- 5. 折行检查 ---------- */
 console.log('\n折行检查（浏览器里 SimHei 汉字宽 = 1em）：');

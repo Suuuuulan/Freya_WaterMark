@@ -28,20 +28,25 @@
     titleFontScale: 1.0,    // 标题字号 = 跟随后的字号 ×1.0（与行文字同高）
     titleHeightScale: 1.0,  // 标题字形纵向拉伸：>1 变高（以行中心为锚点，居中不受影响）
     titleLineHeightRatio: 1.5, // 标题行高 = 字号 ×1.5（与字号解耦：字号小而行高更高）
+    titleLineGapRatio: 0.0, // 标题行间距：折行时两行之间再留 字号 ×此值（单行标题无效果）
     headerPadRatio: 1.8,    // 顶栏高 = 标题行高 ×1.8（上下留白按文字高度算）
     bodyLS: 0.0,
     labelLS: 0.185,         // 标签内字间距（em）——参照水印相机 APP 实测 ≈0.185em
     valueGapRatio: 0.20,    // 「标签」到「值」的间距 = 字号 ×倍率（APP 实测 ≈0.20em）
     labelW: 1.0,
-    bodyFontScale: 1.2,     // 正文字高 = 参考字高 ×1.2（用户要求「字高 120%」）
-    headerFontScale: null,  // null = 标题字号跟随正文倍率（标题属性跟随行文字）
+    bodyFontScale: 1.2,     // 正文字号 = 参考字高 ×1.2（面板「字号」）
+    bodyHeightScale: 1.0,   // 正文字高：只把字形纵向拉高（面板「字高」，以行中线为锚点）
+    headerFontScale: 1.2,   // 标题字号（不再跟随正文字号；面板「字号」再乘上去）
     lineHeightRatio: 1.35,  // 行高 = 字号 ×1.35（按字距收紧后的紧凑值，可调）
     rowGapRatio: 0.18,      // 行间距 = 字号 ×0.18（可调，配合行间分隔线）
+    rowSepH: 1,             // 行间分隔线粗细（px，固定不随图片缩放；0 = 不画也不占位置）
+    rowSepAlpha: 0.18,      // 行间分隔线浓度（黑色 alpha）
+    bodyPadTopRatio: 1.0,   // 白色区域「顶部留白」倍率（1.0 = 参考图实测 0.0147×短边）
+    bodyPadBottomRatio: 1.0,// 白色区域「底部留白」倍率（1.0 = 参考图实测 0.0226×短边）
 
     rows: [
       { on: true, label: '拍摄时间:', type: 'datetime', text: '2026.08.19 10:59' },
-      { on: true, label: '地　　点:', type: 'text', text: '南京市江宁区·南京绿地国际花都2期' },
-      { on: false, label: '备注:', type: 'text', text: '' }
+      { on: true, label: '地　　点:', type: 'text', text: '南京市江宁区·南京绿地国际花都2期' }
     ],
 
     accent: '#15a7fa',
@@ -73,7 +78,8 @@
     quality: 92,
     nameTpl: '{name}_watermark',
     maxEdge: 0,
-    fitView: true
+    fitView: true,
+    cardsClosed: []         // 折叠卡片状态（存「已收起」的面板编号）
   };
 
   /* 比例常量（×base，base = 图片短边；全部取自参考图实测）
@@ -98,8 +104,7 @@
     bodyFont: 0.0226,      // 40    正文字号
     lineH: 0.0338,         // 60    行距（1.5 倍行高）
     rowGap: 0.0,           // 0     行与行之间（行距已含留白）
-    rowSepH: 1,            // 1     行间分隔线高度（固定 1px，不随缩放变化）
-    rowSepColor: 'rgba(0,0,0,.18)', // 行间分隔线：浅灰
+    // 行间分隔线：粗细/浓度改由参数控制（DEFAULTS.rowSepH / rowSepAlpha）
     labelColW: 0.1494,     // 265   标签列宽
     labelGap: 0.0197,      // 35    标签列结束到值列开始
     valueColW: 0.3169,     // 562   值列宽
@@ -346,8 +351,9 @@
       t.padX = base * M.padX * s;
       t.bodyPadX = base * M.bodyPadX * s;
       t.padTop = base * M.padTop * s;
-      t.padBodyTop = base * M.padBodyTop * s;
-      t.padBottom = base * M.padBottom * s;
+      // 白色区域上下留白：倍率 × 参考图实测比例（顶栏与首行之间 / 末行与底边之间）
+      t.padBodyTop = base * M.padBodyTop * s * (p.bodyPadTopRatio == null ? 1 : +p.bodyPadTopRatio);
+      t.padBottom = base * M.padBottom * s * (p.bodyPadBottomRatio == null ? 1 : +p.bodyPadBottomRatio);
       t.radius = base * p.radius * s;
       t.shadowBlur = base * M.shadowBlur * s;
       t.fH = base * M.headerFont * s
@@ -358,6 +364,10 @@
       t.gapR = p.rowGapRatio == null ? 0.18 : p.rowGapRatio;
       t.lineH = t.fB * t.lineHR;
       t.rowGap = t.fB * t.gapR;
+      // 行间分隔线：粗细是固定 px（不随 base 缩放），浓度 = 黑色 alpha
+      t.sepH = Math.max(0, p.rowSepH == null ? 1 : +p.rowSepH);
+      t.sepAlpha = clamp(p.rowSepAlpha == null ? 0.18 : +p.rowSepAlpha, 0, 1);
+      t.sepColor = 'rgba(0,0,0,' + t.sepAlpha + ')';
       t.dotD = base * M.dotD * s;
       t.dotX = base * M.dotX * s;
       // 标题字距取「绝对值(px)」：按 em 算的话字号一放大空隙就同步变大（正是之前 18px 大缝的成因）
@@ -435,8 +445,12 @@
       }
       t.titleLSpx = titleLS;
       t.titleLines = wrapLS(ctx, p.title || '', titleAvail, t.titleLSpx);
-      // 标题行高单独一个倍率：可与字号解耦（字号调小、行高调大）
-      t.titleLineH = t.fH * (p.titleLineHeightRatio == null ? 1.5 : p.titleLineHeightRatio);
+      // 标题行高单独一个倍率：可与字号解耦（字号调小、行高调大）；
+      // 折行时两行之间再按「行间距」留空 → 行距 = 行高 + 行间距
+      t.titleLineHR = p.titleLineHeightRatio == null ? 1.5 : p.titleLineHeightRatio;
+      t.titleLineH = t.fH * t.titleLineHR;
+      t.titleLineGap = t.fH * (p.titleLineGapRatio == null ? 0 : +p.titleLineGapRatio);
+      t.titleLinePitch = t.titleLineH + t.titleLineGap;
       t.dotBlock = dotBlock;
       t.dotReserve = dotReserve;
       // 标题在「圆点预留区之后到顶栏右侧」的区间内居中，再整体右移一点（参考图实测）
@@ -445,7 +459,8 @@
       // 4) 顶栏高度 = 标题行高 × 上下留白倍率（留白按文字高度算，不随字号无限放大）；
       //    标题折行时按行数自动加高
       const headPad = (p.headerPadRatio == null ? 1.8 : p.headerPadRatio);
-      const headTextH = t.titleLines.length * t.titleLineH;
+      const headTextH = t.titleLines.length * t.titleLineH +
+        Math.max(0, t.titleLines.length - 1) * t.titleLineGap;
       t.headerH = Math.max(base * M.headerH * s, headTextH * headPad, headTextH);
 
       // 5) 行块高：内部行距 lineH，行与行之间再留 rowGap
@@ -453,10 +468,10 @@
         h: Math.max(1, r.lines.length) * t.lineH
       }));
 
-      // 6) 总高
+      // 6) 总高（行间带 = 行间距 + 分隔线粗细，分隔线实占 sepH，不会盖到文字上）
       t.bodyTop = t.headerH + t.padBodyTop;
       let bodyH = 0;
-      t.rows.forEach((r, i) => { bodyH += r.h + (i < t.rows.length - 1 ? t.rowGap : 0); });
+      t.rows.forEach((r, i) => { bodyH += r.h + (i < t.rows.length - 1 ? t.rowGap + t.sepH : 0); });
       t.h = t.bodyTop + bodyH + t.padBottom;
 
       // 防伪码行高度：drawCodeLine 与 resolveLogo 共用，避免两处各推导致 logo 块锚点漂移
@@ -525,7 +540,7 @@
      * 只缩放纵向版式，不重算折行 → 保持「先缩放、后定位」的调用顺序即可。 */
     function scaleTable(t, k) {
       if (k >= 0.999) return;
-      t.fB *= k; t.lineH *= k; t.rowGap *= k;
+      t.fB *= k; t.lineH *= k; t.rowGap *= k; t.sepH *= k;
       t.bodyLSpx *= k; t.labelLSpx *= k; t.valueGap *= k;
       t.padBodyTop *= k; t.padBottom *= k;
       t.padTop *= k; t.radius *= k;
@@ -651,7 +666,7 @@
       ctx.shadowColor = 'rgba(0,0,0,.22)';
       ctx.shadowBlur = t.fH * 0.14;
       ctx.shadowOffsetY = t.fH * 0.03;
-      let ty = y + t.headerH / 2 - ((t.titleLines.length - 1) * t.titleLineH) / 2;
+      let ty = y + t.headerH / 2 - ((t.titleLines.length - 1) * t.titleLinePitch) / 2;
       // 标题纵向拉伸：把字形拉高（宽度基本不变），并**以行中心为锚点**缩放，
       // 这样居中排版在拉伸后依然居中（不会像左端锚点那样把整行推偏）
       const hs = p.titleHeightScale == null ? 1 : Math.max(0.5, Math.min(2.5, p.titleHeightScale));
@@ -667,7 +682,7 @@
           fillLS(ctx, l, -lw / 2, 0, t.titleLSpx);
           ctx.restore();
         }
-        ty += t.titleLineH;
+        ty += t.titleLinePitch;
       }
       ctx.restore();
 
@@ -679,24 +694,34 @@
       ctx.textAlign = 'left';
       const labelX = x + t.bodyPadX;
       const valueX = labelX + t.labelW + t.gap;
-      const sepX = x + t.bodyPadX * 0.6;
-      const sepW = t.w - t.bodyPadX * 1.2;
+      // 正文字高：只把字形纵向拉高（以每行中线为锚点），排版尺寸不变
+      const hsB = Math.max(0.5, Math.min(2.5, p.bodyHeightScale == null ? 1 : p.bodyHeightScale));
+      const put = (text, tx, tyy, ls) => {
+        if (!text) return;
+        if (hsB === 1) { fillLS(ctx, text, tx, tyy, ls); return; }
+        ctx.save();
+        ctx.translate(tx, tyy);
+        ctx.scale(1, hsB);
+        fillLS(ctx, text, 0, 0, ls);
+        ctx.restore();
+      };
       let ry = y + t.bodyTop;
       t.rows.forEach((row, i) => {
-        // 行间分隔线（固定 1px 高，不随缩放变化）
-        if (i > 0 && M.rowSepH > 0) {
-          ctx.fillStyle = M.rowSepColor;
-          ctx.fillRect(sepX, Math.round(ry), sepW, M.rowSepH);
+        // 行间分隔线：长度到白区两端；垂直方向落在两行**正中间**
+        // （行间带高度 = 行间距 + 粗细，上下各留 rowGap/2）
+        if (i > 0 && t.sepH > 0) {
+          ctx.fillStyle = t.sepColor;
+          ctx.fillRect(x, Math.round(ry - t.sepH - t.rowGap / 2), t.w, t.sepH);
           ctx.fillStyle = p.textColor;
         }
         const firstMid = ry + t.lineH / 2;
-        if (row.labelText) fillLS(ctx, row.labelText, labelX, firstMid, t.labelLSpx);
+        put(row.labelText, labelX, firstMid, t.labelLSpx);
         let ly = firstMid;
         for (const l of row.lines) {
-          if (l) fillLS(ctx, l, valueX, ly, t.bodyLSpx);
+          put(l, valueX, ly, t.bodyLSpx);
           ly += t.lineH;
         }
-        ry += row.h + t.rowGap;
+        ry += row.h + t.rowGap + t.sepH;
       });
       ctx.restore();
     }

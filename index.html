@@ -120,6 +120,27 @@ body {
   font-weight: 700;
   letter-spacing: .04em;
 }
+/* 折叠卡：点标题栏收起/展开（状态持久化在 params.cardsClosed） */
+.card-h { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.card-h:hover { color: #6ee7ff; }
+.card-h .caret {
+  margin-left: auto; width: 0; height: 0; flex: none;
+  border-left: 5px solid transparent; border-right: 5px solid transparent;
+  border-top: 6px solid currentColor;
+  transition: transform .15s;
+}
+.card.closed .card-h { margin-bottom: 0; }
+.card.closed .card-h .caret { transform: rotate(-90deg); }
+.card.closed .card-body { display: none; }
+/* 包了一层 .card-body 之后，保持原来「最后一项不留底边距」的观感 */
+.card-body > .ctl:last-child, .card-body > .small:last-child { margin-bottom: 0; }
+
+/* 分组小标题（卡片内部的参数分组） */
+.grp {
+  font-size: 11.5px; color: var(--muted);
+  margin: 2px 0 8px; padding-bottom: 4px;
+  border-bottom: 1px dashed var(--line);
+}
 
 /* ---------- form controls ---------- */
 .ctl { margin-bottom: 12px; }
@@ -196,6 +217,8 @@ input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border: 2px s
 .field input[type="text"], .field textarea { margin-bottom: 8px; }
 .field input[type="text"]:last-child, .field textarea:last-child { margin-bottom: 0; }
 .field.off { opacity: .45; }
+/* 行编辑器右上角：显示开关 + 删除 */
+.row-tools { display: inline-flex; align-items: center; gap: 8px; }
 
 /* ---------- 时间段映射清单 ---------- */
 .range-map { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; max-height: 132px; overflow-y: auto; }
@@ -393,7 +416,8 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
     </section>
 
     <section class="card">
-      <h2>2 · 位置与尺寸</h2>
+      <h2 class="card-h" data-card="2">2 · 位置与尺寸<span class="caret"></span></h2>
+      <div class="card-body">
       <div class="ctl">
         <label>水印位置</label>
         <div class="seg" id="segPos">
@@ -426,101 +450,148 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
         <input type="range" id="tableOpacity" min="0" max="100" value="100">
       </div>
       <div class="ctl small muted">提示：选中图片后可用方向键微调边距（按住 Shift 加大步长）。</div>
+      </div>
     </section>
 
     <section class="card">
-      <h2>3 · 表格内容</h2>
+      <h2 class="card-h" data-card="3">3 · 表格内容</h2>
+      <div class="card-body">
       <div class="ctl">
         <label>顶部标题</label>
         <input type="text" id="title" value="南京云之宝智算中心" placeholder="例如：某某公司项目部">
       </div>
+      <div class="grp">标题文字属性</div>
       <div class="ctl grid2">
         <div>
-          <label>标题字号 <output id="outTitleScale">100%</output></label>
+          <label>字号 <output id="outTitleScale">100%</output></label>
           <input type="range" id="titleFontScale" min="40" max="200" value="100">
         </div>
         <div>
-          <label>标题字高 <output id="outTitleHeight">100%</output></label>
+          <label>字高 <output id="outTitleHeight">100%</output></label>
           <input type="range" id="titleHeightScale" min="50" max="200" value="100">
         </div>
       </div>
       <div class="ctl grid2">
         <div>
-          <label>标题行高 <output id="outTitleLineH">1.50</output></label>
+          <label>行高 <output id="outTitleLineH">1.50</output></label>
           <input type="range" id="titleLineHeightRatio" min="1" max="2.5" step="0.05" value="1.5">
         </div>
         <div>
-          <label>顶栏高度加成 <output id="outHeaderPad">180%</output></label>
+          <label>行间距 <output id="outTitleLineGap">0.00</output></label>
+          <input type="range" id="titleLineGapRatio" min="0" max="1.2" step="0.02" value="0">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>字间距 <output id="outTitleLS">5</output>px</label>
+          <input type="range" id="titleLS" min="0" max="40" step="1" value="5">
+        </div>
+        <div>
+          <label>顶栏高度 <output id="outHeaderPad">180%</output></label>
           <input type="range" id="headerPadRatio" min="120" max="320" value="180">
         </div>
       </div>
-
-      <div class="ctl field">
-        <div class="field-head">
-          <label>第 1 行</label>
-          <label class="chk"><input type="checkbox" id="r1on" checked><span>显示</span></label>
-        </div>
-        <div class="grid2">
-          <input type="text" id="r1label" value="拍摄时间:" placeholder="标签">
-          <select id="r1type">
-            <option value="datetime">拍摄时间</option>
-            <option value="customdate">自定义日期+随机时间</option>
-            <option value="date">仅日期</option>
-            <option value="time">仅时间</option>
-            <option value="text">自定义文本</option>
-          </select>
-        </div>
-        <input type="text" id="r1text" value="2026.08.19 10:59" placeholder="自定义文本内容">
-        <div class="row small">
-          <button class="btn btn-mini" data-now="r1text" type="button">用当前时间</button>
-          <button class="btn btn-mini" data-filetime="r1text" type="button">用图片时间</button>
-        </div>
+      <div class="small muted" style="margin:-4px 0 10px">
+        字号 = 参考字号 × 倍率（不再跟随正文）；字高只把字形纵向拉高（不改排版）；
+        行间距只在标题折行时起作用（行距 = 行高 + 行间距）。
       </div>
 
-      <div class="ctl field">
-        <div class="field-head">
-          <label>第 2 行</label>
-          <label class="chk"><input type="checkbox" id="r2on" checked><span>显示</span></label>
-        </div>
-        <div class="grid2">
-          <input type="text" id="r2label" value="地　　点:" placeholder="标签">
-          <select id="r2type">
-            <option value="text">自定义文本</option>
-            <option value="datetime">拍摄时间</option>
-            <option value="customdate">自定义日期+随机时间</option>
-            <option value="date">仅日期</option>
-            <option value="time">仅时间</option>
-          </select>
-        </div>
-        <textarea id="r2text" rows="2" placeholder="地点内容，可留空">南京市江宁区·南京绿地国际花都2期</textarea>
+      <div class="grp">行内容（可增删）</div>
+      <div id="rowsBox"></div>
+      <div class="ctl">
+        <button class="btn btn-mini" id="btnAddRow" type="button">＋ 添加一行</button>
+        <span class="small muted" id="rowHint">默认两行：拍摄时间、地点</span>
       </div>
-
-      <div class="ctl field">
-        <div class="field-head">
-          <label>第 3 行</label>
-          <label class="chk"><input type="checkbox" id="r3on"><span>显示</span></label>
-        </div>
-        <div class="grid2">
-          <input type="text" id="r3label" value="备注:" placeholder="标签">
-          <select id="r3type">
-            <option value="text">自定义文本</option>
-            <option value="datetime">拍摄时间</option>
-            <option value="customdate">自定义日期+随机时间</option>
-            <option value="date">仅日期</option>
-            <option value="time">仅时间</option>
-          </select>
-        </div>
-        <input type="text" id="r3text" value="" placeholder="自定义文本内容">
-      </div>
-
       <div class="ctl">
         <label>标签列宽 <output id="outLabelW">100%</output></label>
         <input type="range" id="labelW" min="40" max="220" value="100">
       </div>
+      </div>
     </section>
 
     <section class="card">
-      <h2>4 · 外观样式</h2>
+      <h2 class="card-h" data-card="4">4 · 正文与白色区域</h2>
+      <div class="card-body">
+      <div class="grp">正文文字属性</div>
+      <div class="ctl grid2">
+        <div>
+          <label>字号 <output id="outBodyFont">120%</output></label>
+          <input type="range" id="bodyFontScale" min="40" max="250" value="120">
+        </div>
+        <div>
+          <label>字高 <output id="outBodyHeight">100%</output></label>
+          <input type="range" id="bodyHeightScale" min="50" max="200" value="100">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>行高 <output id="outLineH">1.35</output></label>
+          <input type="range" id="lineHeightRatio" min="1" max="3" step="0.05" value="1.35">
+        </div>
+        <div>
+          <label>行间距 <output id="outRowGap">0.18</output></label>
+          <input type="range" id="rowGapRatio" min="0" max="1.2" step="0.02" value="0.18">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>字间距 <output id="outBodyLS">0.00</output>em</label>
+          <input type="range" id="bodyLS" min="-0.05" max="0.8" step="0.01" value="0">
+        </div>
+        <div>
+          <label>标签字间距 <output id="outLabelLS">0.19</output>em</label>
+          <input type="range" id="labelLS" min="0" max="0.6" step="0.01" value="0.185">
+        </div>
+      </div>
+      <div class="ctl grid2">
+        <div>
+          <label>冒号后间距 <output id="outValueGap">0.20</output>em</label>
+          <input type="range" id="valueGapRatio" min="0" max="1.2" step="0.02" value="0.2">
+        </div>
+        <div>
+          <label>标签列宽 <output id="outLabelW">100%</output></label>
+          <input type="range" id="labelW" min="40" max="220" value="100">
+        </div>
+      </div>
+      <div class="small muted" style="margin:-4px 0 10px">
+        字高只把字形纵向拉高（会溢出相邻行时请配合调大行高）；字号 = 参考字号 × 倍率。
+      </div>
+
+      <div class="grp">行间分隔线</div>
+      <div class="ctl grid2">
+        <div>
+          <label>粗细 <output id="outSepH">1</output>px</label>
+          <input type="range" id="rowSepH" min="0" max="12" step="0.5" value="1">
+        </div>
+        <div>
+          <label>浓度 <output id="outSepAlpha">0.18</output></label>
+          <input type="range" id="rowSepAlpha" min="0" max="0.8" step="0.02" value="0.18">
+        </div>
+      </div>
+      <div class="small muted" style="margin:-4px 0 10px">
+        分隔线左右顶到白区两端，垂直方向落在两行正中间；粗细实占高度，调粗会把行推开、不盖文字。
+      </div>
+
+      <div class="grp">白区上下留白</div>
+      <div class="ctl grid2">
+        <div>
+          <label>顶部留白 <output id="outBodyPadTop">100%</output></label>
+          <input type="range" id="bodyPadTopRatio" min="0" max="250" step="5" value="100">
+        </div>
+        <div>
+          <label>底部留白 <output id="outBodyPadBottom">100%</output></label>
+          <input type="range" id="bodyPadBottomRatio" min="0" max="250" step="5" value="100">
+        </div>
+      </div>
+      <div class="small muted">
+        顶部/底部留白管白区最上沿到首行、末行到最下沿那两条（100% = 参考图实测值，0% 就贴边）。
+      </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="card-h" data-card="5">5 · 外观样式</h2>
+      <div class="card-body">
       <div class="ctl grid2">
         <div>
           <label>主色（顶栏）</label>
@@ -553,26 +624,6 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
       </div>
       <div class="ctl grid2">
         <div>
-          <label>标题字距 <output id="outTitleLS">5</output>px</label>
-          <input type="range" id="titleLS" min="0" max="40" step="1" value="5">
-        </div>
-        <div>
-          <label>正文字距 <output id="outBodyLS">0.00</output>em</label>
-          <input type="range" id="bodyLS" min="-0.05" max="0.8" step="0.01" value="0">
-        </div>
-      </div>
-      <div class="ctl grid2">
-        <div>
-          <label>标签字距 <output id="outLabelLS">0.19</output>em</label>
-          <input type="range" id="labelLS" min="0" max="0.6" step="0.01" value="0.185">
-        </div>
-        <div>
-          <label>冒号后间距 <output id="outValueGap">0.20</output>em</label>
-          <input type="range" id="valueGapRatio" min="0" max="1.2" step="0.02" value="0.2">
-        </div>
-      </div>
-      <div class="ctl grid2">
-        <div>
           <label>圆角 <output id="outRadius">16</output></label>
           <input type="range" id="radius" min="0" max="90" value="16">
         </div>
@@ -584,10 +635,12 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
       <div class="ctl">
         <label class="chk"><input type="checkbox" id="showTable" checked><span>显示信息表格</span></label>
       </div>
+      </div>
     </section>
 
     <section class="card">
-      <h2>5 · 右下角防伪</h2>
+      <h2 class="card-h" data-card="6">6 · 右下角防伪</h2>
+      <div class="card-body">
       <div class="ctl">
         <label class="chk"><input type="checkbox" id="showLogo" checked><span>显示防伪标识（今日水印 logo）</span></label>
       </div>
@@ -615,10 +668,11 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
       <div class="ctl small muted">
         防伪码在每张图片导出时重新随机生成；预览显示的是「当前预览码」。
       </div>
+      </div>
     </section>
 
     <section class="card">
-      <h2>6 · 输出</h2>
+      <h2>7 · 输出</h2>
       <div class="ctl grid2">
         <div>
           <label>格式</label>
@@ -857,20 +911,25 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     titleFontScale: 1.0,    // 标题字号 = 跟随后的字号 ×1.0（与行文字同高）
     titleHeightScale: 1.0,  // 标题字形纵向拉伸：>1 变高（以行中心为锚点，居中不受影响）
     titleLineHeightRatio: 1.5, // 标题行高 = 字号 ×1.5（与字号解耦：字号小而行高更高）
+    titleLineGapRatio: 0.0, // 标题行间距：折行时两行之间再留 字号 ×此值（单行标题无效果）
     headerPadRatio: 1.8,    // 顶栏高 = 标题行高 ×1.8（上下留白按文字高度算）
     bodyLS: 0.0,
     labelLS: 0.185,         // 标签内字间距（em）——参照水印相机 APP 实测 ≈0.185em
     valueGapRatio: 0.20,    // 「标签」到「值」的间距 = 字号 ×倍率（APP 实测 ≈0.20em）
     labelW: 1.0,
-    bodyFontScale: 1.2,     // 正文字高 = 参考字高 ×1.2（用户要求「字高 120%」）
-    headerFontScale: null,  // null = 标题字号跟随正文倍率（标题属性跟随行文字）
+    bodyFontScale: 1.2,     // 正文字号 = 参考字高 ×1.2（面板「字号」）
+    bodyHeightScale: 1.0,   // 正文字高：只把字形纵向拉高（面板「字高」，以行中线为锚点）
+    headerFontScale: 1.2,   // 标题字号（不再跟随正文字号；面板「字号」再乘上去）
     lineHeightRatio: 1.35,  // 行高 = 字号 ×1.35（按字距收紧后的紧凑值，可调）
     rowGapRatio: 0.18,      // 行间距 = 字号 ×0.18（可调，配合行间分隔线）
+    rowSepH: 1,             // 行间分隔线粗细（px，固定不随图片缩放；0 = 不画也不占位置）
+    rowSepAlpha: 0.18,      // 行间分隔线浓度（黑色 alpha）
+    bodyPadTopRatio: 1.0,   // 白色区域「顶部留白」倍率（1.0 = 参考图实测 0.0147×短边）
+    bodyPadBottomRatio: 1.0,// 白色区域「底部留白」倍率（1.0 = 参考图实测 0.0226×短边）
 
     rows: [
       { on: true, label: '拍摄时间:', type: 'datetime', text: '2026.08.19 10:59' },
-      { on: true, label: '地　　点:', type: 'text', text: '南京市江宁区·南京绿地国际花都2期' },
-      { on: false, label: '备注:', type: 'text', text: '' }
+      { on: true, label: '地　　点:', type: 'text', text: '南京市江宁区·南京绿地国际花都2期' }
     ],
 
     accent: '#15a7fa',
@@ -902,7 +961,8 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     quality: 92,
     nameTpl: '{name}_watermark',
     maxEdge: 0,
-    fitView: true
+    fitView: true,
+    cardsClosed: []         // 折叠卡片状态（存「已收起」的面板编号）
   };
 
   /* 比例常量（×base，base = 图片短边；全部取自参考图实测）
@@ -927,8 +987,7 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     bodyFont: 0.0226,      // 40    正文字号
     lineH: 0.0338,         // 60    行距（1.5 倍行高）
     rowGap: 0.0,           // 0     行与行之间（行距已含留白）
-    rowSepH: 1,            // 1     行间分隔线高度（固定 1px，不随缩放变化）
-    rowSepColor: 'rgba(0,0,0,.18)', // 行间分隔线：浅灰
+    // 行间分隔线：粗细/浓度改由参数控制（DEFAULTS.rowSepH / rowSepAlpha）
     labelColW: 0.1494,     // 265   标签列宽
     labelGap: 0.0197,      // 35    标签列结束到值列开始
     valueColW: 0.3169,     // 562   值列宽
@@ -1175,8 +1234,9 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       t.padX = base * M.padX * s;
       t.bodyPadX = base * M.bodyPadX * s;
       t.padTop = base * M.padTop * s;
-      t.padBodyTop = base * M.padBodyTop * s;
-      t.padBottom = base * M.padBottom * s;
+      // 白色区域上下留白：倍率 × 参考图实测比例（顶栏与首行之间 / 末行与底边之间）
+      t.padBodyTop = base * M.padBodyTop * s * (p.bodyPadTopRatio == null ? 1 : +p.bodyPadTopRatio);
+      t.padBottom = base * M.padBottom * s * (p.bodyPadBottomRatio == null ? 1 : +p.bodyPadBottomRatio);
       t.radius = base * p.radius * s;
       t.shadowBlur = base * M.shadowBlur * s;
       t.fH = base * M.headerFont * s
@@ -1187,6 +1247,10 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       t.gapR = p.rowGapRatio == null ? 0.18 : p.rowGapRatio;
       t.lineH = t.fB * t.lineHR;
       t.rowGap = t.fB * t.gapR;
+      // 行间分隔线：粗细是固定 px（不随 base 缩放），浓度 = 黑色 alpha
+      t.sepH = Math.max(0, p.rowSepH == null ? 1 : +p.rowSepH);
+      t.sepAlpha = clamp(p.rowSepAlpha == null ? 0.18 : +p.rowSepAlpha, 0, 1);
+      t.sepColor = 'rgba(0,0,0,' + t.sepAlpha + ')';
       t.dotD = base * M.dotD * s;
       t.dotX = base * M.dotX * s;
       // 标题字距取「绝对值(px)」：按 em 算的话字号一放大空隙就同步变大（正是之前 18px 大缝的成因）
@@ -1264,8 +1328,12 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       }
       t.titleLSpx = titleLS;
       t.titleLines = wrapLS(ctx, p.title || '', titleAvail, t.titleLSpx);
-      // 标题行高单独一个倍率：可与字号解耦（字号调小、行高调大）
-      t.titleLineH = t.fH * (p.titleLineHeightRatio == null ? 1.5 : p.titleLineHeightRatio);
+      // 标题行高单独一个倍率：可与字号解耦（字号调小、行高调大）；
+      // 折行时两行之间再按「行间距」留空 → 行距 = 行高 + 行间距
+      t.titleLineHR = p.titleLineHeightRatio == null ? 1.5 : p.titleLineHeightRatio;
+      t.titleLineH = t.fH * t.titleLineHR;
+      t.titleLineGap = t.fH * (p.titleLineGapRatio == null ? 0 : +p.titleLineGapRatio);
+      t.titleLinePitch = t.titleLineH + t.titleLineGap;
       t.dotBlock = dotBlock;
       t.dotReserve = dotReserve;
       // 标题在「圆点预留区之后到顶栏右侧」的区间内居中，再整体右移一点（参考图实测）
@@ -1274,7 +1342,8 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       // 4) 顶栏高度 = 标题行高 × 上下留白倍率（留白按文字高度算，不随字号无限放大）；
       //    标题折行时按行数自动加高
       const headPad = (p.headerPadRatio == null ? 1.8 : p.headerPadRatio);
-      const headTextH = t.titleLines.length * t.titleLineH;
+      const headTextH = t.titleLines.length * t.titleLineH +
+        Math.max(0, t.titleLines.length - 1) * t.titleLineGap;
       t.headerH = Math.max(base * M.headerH * s, headTextH * headPad, headTextH);
 
       // 5) 行块高：内部行距 lineH，行与行之间再留 rowGap
@@ -1282,10 +1351,10 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
         h: Math.max(1, r.lines.length) * t.lineH
       }));
 
-      // 6) 总高
+      // 6) 总高（行间带 = 行间距 + 分隔线粗细，分隔线实占 sepH，不会盖到文字上）
       t.bodyTop = t.headerH + t.padBodyTop;
       let bodyH = 0;
-      t.rows.forEach((r, i) => { bodyH += r.h + (i < t.rows.length - 1 ? t.rowGap : 0); });
+      t.rows.forEach((r, i) => { bodyH += r.h + (i < t.rows.length - 1 ? t.rowGap + t.sepH : 0); });
       t.h = t.bodyTop + bodyH + t.padBottom;
 
       // 防伪码行高度：drawCodeLine 与 resolveLogo 共用，避免两处各推导致 logo 块锚点漂移
@@ -1354,7 +1423,7 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
      * 只缩放纵向版式，不重算折行 → 保持「先缩放、后定位」的调用顺序即可。 */
     function scaleTable(t, k) {
       if (k >= 0.999) return;
-      t.fB *= k; t.lineH *= k; t.rowGap *= k;
+      t.fB *= k; t.lineH *= k; t.rowGap *= k; t.sepH *= k;
       t.bodyLSpx *= k; t.labelLSpx *= k; t.valueGap *= k;
       t.padBodyTop *= k; t.padBottom *= k;
       t.padTop *= k; t.radius *= k;
@@ -1480,7 +1549,7 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       ctx.shadowColor = 'rgba(0,0,0,.22)';
       ctx.shadowBlur = t.fH * 0.14;
       ctx.shadowOffsetY = t.fH * 0.03;
-      let ty = y + t.headerH / 2 - ((t.titleLines.length - 1) * t.titleLineH) / 2;
+      let ty = y + t.headerH / 2 - ((t.titleLines.length - 1) * t.titleLinePitch) / 2;
       // 标题纵向拉伸：把字形拉高（宽度基本不变），并**以行中心为锚点**缩放，
       // 这样居中排版在拉伸后依然居中（不会像左端锚点那样把整行推偏）
       const hs = p.titleHeightScale == null ? 1 : Math.max(0.5, Math.min(2.5, p.titleHeightScale));
@@ -1496,7 +1565,7 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
           fillLS(ctx, l, -lw / 2, 0, t.titleLSpx);
           ctx.restore();
         }
-        ty += t.titleLineH;
+        ty += t.titleLinePitch;
       }
       ctx.restore();
 
@@ -1508,24 +1577,34 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       ctx.textAlign = 'left';
       const labelX = x + t.bodyPadX;
       const valueX = labelX + t.labelW + t.gap;
-      const sepX = x + t.bodyPadX * 0.6;
-      const sepW = t.w - t.bodyPadX * 1.2;
+      // 正文字高：只把字形纵向拉高（以每行中线为锚点），排版尺寸不变
+      const hsB = Math.max(0.5, Math.min(2.5, p.bodyHeightScale == null ? 1 : p.bodyHeightScale));
+      const put = (text, tx, tyy, ls) => {
+        if (!text) return;
+        if (hsB === 1) { fillLS(ctx, text, tx, tyy, ls); return; }
+        ctx.save();
+        ctx.translate(tx, tyy);
+        ctx.scale(1, hsB);
+        fillLS(ctx, text, 0, 0, ls);
+        ctx.restore();
+      };
       let ry = y + t.bodyTop;
       t.rows.forEach((row, i) => {
-        // 行间分隔线（固定 1px 高，不随缩放变化）
-        if (i > 0 && M.rowSepH > 0) {
-          ctx.fillStyle = M.rowSepColor;
-          ctx.fillRect(sepX, Math.round(ry), sepW, M.rowSepH);
+        // 行间分隔线：长度到白区两端；垂直方向落在两行**正中间**
+        // （行间带高度 = 行间距 + 粗细，上下各留 rowGap/2）
+        if (i > 0 && t.sepH > 0) {
+          ctx.fillStyle = t.sepColor;
+          ctx.fillRect(x, Math.round(ry - t.sepH - t.rowGap / 2), t.w, t.sepH);
           ctx.fillStyle = p.textColor;
         }
         const firstMid = ry + t.lineH / 2;
-        if (row.labelText) fillLS(ctx, row.labelText, labelX, firstMid, t.labelLSpx);
+        put(row.labelText, labelX, firstMid, t.labelLSpx);
         let ly = firstMid;
         for (const l of row.lines) {
-          if (l) fillLS(ctx, l, valueX, ly, t.bodyLSpx);
+          put(l, valueX, ly, t.bodyLSpx);
           ly += t.lineH;
         }
-        ry += row.h + t.rowGap;
+        ry += row.h + t.rowGap + t.sepH;
       });
       ctx.restore();
     }
@@ -1817,23 +1896,29 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
 
   /* ---------------- 参数 ↔ 界面 ---------------- */
   const CONTROL_IDS = ['scale', 'marginX', 'marginY', 'opacity', 'tableOpacity', 'title', 'titleLS', 'bodyLS',
-    'labelLS', 'valueGapRatio', 'titleFontScale', 'titleHeightScale', 'titleLineHeightRatio', 'headerPadRatio',
+    'labelLS', 'valueGapRatio', 'titleFontScale', 'titleHeightScale', 'titleLineHeightRatio', 'titleLineGapRatio',
+    'headerPadRatio', 'bodyFontScale', 'bodyHeightScale',
     'labelW', 'accent', 'dotColor', 'bgColor', 'textColor', 'fontFamily', 'radius', 'shadow',
+    'lineHeightRatio', 'rowGapRatio', 'rowSepH', 'rowSepAlpha', 'bodyPadTopRatio', 'bodyPadBottomRatio',
     'showTable', 'showLogo', 'logoScale', 'showCode', 'codeLen', 'codeLabel', 'codeSize',
     'rangesText', 'rangeAuto'];
 
   /* 导出/视图设置：也纳入持久化（面板上「全部数据」都要存） */
   const EXPORT_IDS = ['format', 'quality', 'nameTpl', 'maxEdge', 'fitView'];
 
-  /* 让已有的 <output> 数值「点一下就地编辑」——不新增任何元素，排版不会变。
+  /* 让 <output> 数值「点一下就地编辑」——不新增任何元素，排版不会变。
    * 编辑时把 output 临时换成同尺寸的 input，提交后还原成 output（格式由 readUI 负责回填）。
-   * 取值范围来自同一个 .ctl 里的滑块，超范围自动夹取。 */
+   * 绑定方式：**从滑块出发找它自己的 output**（slider → parentElement → output）。
+   * 不能用 out.closest('.ctl')：.ctl.grid2 里一个 .ctl 装两个滑块，
+   * 那样右半边的数值会去改左边那个滑块（曾是个真 bug）。 */
   function bindOutputEditing() {
-    document.querySelectorAll('output').forEach((out) => {
-      if (out.dataset.editable) return;
-      const ctl = out.closest('.ctl');
-      const slider = ctl && ctl.querySelector('input[type="range"]');
-      if (!slider || !slider.id) return;      // 只有绑定到滑块的 output 才可编辑
+    document.querySelectorAll('input[type="range"]').forEach((slider) => {
+      if (!slider.id || slider.dataset.editBound) return;
+      const holder = slider.parentElement;          // 普通 .ctl，或 grid2 里的那个 cell
+      if (!holder) return;
+      const out = holder.querySelector('output');
+      if (!out || out.dataset.editable) return;     // 只有带数值显示的滑块才可编辑
+      slider.dataset.editBound = '1';
       out.dataset.editable = '1';
       out.title = '点击可直接输入数值';
       out.classList.add('editable');
@@ -1845,9 +1930,9 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
           // 触发既有链路：readUI 会把 output 文本重写成新值（含 % / 小数位格式）
           slider.dispatchEvent(new Event('input', { bubbles: true }));
           slider.dispatchEvent(new Event('change', { bubbles: true }));
-          ctl.querySelector('input.ctl-edit')?.replaceWith(out);
+          holder.querySelector('input.ctl-edit')?.replaceWith(out);
         } else {
-          ctl.querySelector('input.ctl-edit')?.replaceWith(out);
+          holder.querySelector('input.ctl-edit')?.replaceWith(out);
           out.textContent = prevText;          // 非法输入 → 还原成原文本
         }
         out.dataset.editing = '';
@@ -1883,11 +1968,188 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     });
   }
 
-  const ROW_IDS = [1, 2, 3].map((i) => ({
-    on: 'r' + i + 'on', label: 'r' + i + 'label', type: 'r' + i + 'type', text: 'r' + i + 'text', idx: i - 1,
-    ph: '自定义文本内容'
-  }));
-  ROW_IDS[1].ph = '地点内容，可留空';       // r2 的占位文字与其它行不同，先记下来，切换行类型时恢复
+  /* ---------------- 行内容编辑器（可增删） ----------------
+   * 行数是动态的：面板里的行块全部由这里创建，并直接持有各控件引用
+   * （不再用固定的 r1/r2/r3 id，也不是写死三行）。 */
+  const ROW_TYPE_OPTIONS = [
+    ['datetime', '拍摄时间'],
+    ['customdate', '自定义日期+随机时间'],
+    ['date', '仅日期'],
+    ['time', '仅时间'],
+    ['text', '自定义文本']
+  ];
+  const ROW_TYPES_TIME = ['datetime', 'customdate', 'date', 'time'];
+  const MAX_ROWS = 8;
+  let rowEditors = [];
+
+  function makeRowEditor(row) {
+    const node = document.createElement('div');
+    node.className = 'ctl field';
+    const head = document.createElement('div');
+    head.className = 'field-head';
+    const title = document.createElement('label');
+    const tools = document.createElement('span');
+    tools.className = 'row-tools';
+    const chkWrap = document.createElement('label');
+    chkWrap.className = 'chk';
+    const on = document.createElement('input');
+    on.type = 'checkbox';
+    const chkText = document.createElement('span');
+    chkText.textContent = '显示';
+    chkWrap.appendChild(on);
+    chkWrap.appendChild(chkText);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn btn-mini';
+    del.textContent = '删除';
+    tools.appendChild(chkWrap);
+    tools.appendChild(del);
+    head.appendChild(title);
+    head.appendChild(tools);
+
+    const grid = document.createElement('div');
+    grid.className = 'grid2';
+    const label = document.createElement('input');
+    label.type = 'text';
+    label.placeholder = '标签（如 拍摄时间:）';
+    const type = document.createElement('select');
+    ROW_TYPE_OPTIONS.forEach((pair) => {
+      const opt = document.createElement('option');
+      opt.value = pair[0];
+      opt.textContent = pair[1];
+      type.appendChild(opt);
+    });
+    grid.appendChild(label);
+    grid.appendChild(type);
+    const text = document.createElement('textarea');
+    text.rows = 1;
+    text.spellcheck = false;
+    text.placeholder = '内容';
+
+    const quick = document.createElement('div');
+    quick.className = 'row small';
+    const nowBtn = document.createElement('button');
+    nowBtn.type = 'button'; nowBtn.className = 'btn btn-mini'; nowBtn.textContent = '用当前时间';
+    const fileBtn = document.createElement('button');
+    fileBtn.type = 'button'; fileBtn.className = 'btn btn-mini'; fileBtn.textContent = '用图片时间';
+    quick.appendChild(nowBtn);
+    quick.appendChild(fileBtn);
+
+    node.appendChild(head);
+    node.appendChild(grid);
+    node.appendChild(text);
+    node.appendChild(quick);
+
+    const el = { node, title, on, label, type, text, quick, nowBtn, fileBtn };
+    el.on.checked = row.on !== false;
+    el.label.value = row.label || '';
+    el.type.value = row.type || 'text';
+    el.text.value = row.text || '';
+    [el.on, el.label, el.type, el.text].forEach((c) => {
+      c.addEventListener('input', onRowEdit);
+      c.addEventListener('change', onRowEdit);
+    });
+    del.onclick = () => removeRow(el);
+    nowBtn.onclick = () => fillRow(el, new Date());
+    fileBtn.onclick = () => {
+      const item = state.items[state.active];
+      fillRow(el, (item && item.date) || new Date());
+    };
+    return el;
+  }
+
+  function buildRowEditors() {
+    if (!Array.isArray(state.params.rows) || !state.params.rows.length) {
+      state.params.rows = [{ on: true, label: '拍摄时间:', type: 'datetime', text: '' }];
+    }
+    const box = $('rowsBox');
+    box.innerHTML = '';
+    rowEditors = state.params.rows.map((row) => {
+      const el = makeRowEditor(row);
+      box.appendChild(el.node);
+      return el;
+    });
+    syncRowEditors();
+  }
+
+  /** 行块上的类型相关显示（第 n 行标题 / 显示开关变灰 / 占位文字 / 快捷按钮） */
+  function syncRowEditors() {
+    rowEditors.forEach((el, i) => {
+      el.idx = i;
+      el.title.textContent = '第 ' + (i + 1) + ' 行';
+      el.node.classList.toggle('off', !el.on.checked);
+      el.text.placeholder = el.type.value === 'customdate' ? '2026.08.19（日期）'
+        : el.type.value === 'text' ? '内容，可留空' : '自动取图片时间（可留空）';
+      el.quick.hidden = ROW_TYPES_TIME.indexOf(el.type.value) < 0;
+    });
+    $('rowHint').textContent = `共 ${rowEditors.length} 行（最多 ${MAX_ROWS} 行）`;
+  }
+
+  function onRowEdit() {
+    readUI();
+    scheduleRender();
+    saveParams();
+  }
+
+  /** 快捷填时间：普通行写入完整时间并切成「自定义文本」；
+   *  若当前是「自定义日期+随机时间」行，则只写日期、类型保持不变。 */
+  function fillRow(el, d) {
+    if (el.type.value === 'customdate') el.text.value = WM.formatDate(d, 'date');
+    else { el.text.value = WM.formatDate(d, 'datetime'); el.type.value = 'text'; }
+    el.text.dataset.manual = '1';
+    onRowEdit();
+  }
+
+  function addRow() {
+    if (rowEditors.length >= MAX_ROWS) { toast(`最多 ${MAX_ROWS} 行`); return; }
+    state.params.rows.push({ on: true, label: '', type: 'text', text: '' });
+    buildRowEditors();
+    readUI();
+    scheduleRender();
+    saveParams();
+    const last = rowEditors[rowEditors.length - 1];
+    if (last && last.label.focus) last.label.focus();
+    toast('已添加一行');
+  }
+
+  function removeRow(el) {
+    const i = rowEditors.indexOf(el);
+    if (i < 0) return;
+    if (rowEditors.length <= 1) { toast('至少保留一行'); return; }
+    state.params.rows.splice(i, 1);
+    buildRowEditors();
+    readUI();
+    scheduleRender();
+    saveParams();
+    toast('已删除第 ' + (i + 1) + ' 行');
+  }
+
+  /* ---------------- 折叠卡 ---------------- */
+  const cardHeads = Array.from(document.querySelectorAll('.card-h[data-card]'));
+
+  function applyCards() {
+    const closed = state.params.cardsClosed || [];
+    cardHeads.forEach((h) => {
+      const card = h.closest('.card');
+      if (card) card.classList.toggle('closed', closed.indexOf(h.dataset.card) >= 0);
+    });
+  }
+
+  function bindCards() {
+    cardHeads.forEach((h) => {
+      h.onclick = () => {
+        const card = h.closest('.card');
+        if (!card) return;
+        const closed = !card.classList.contains('closed');
+        card.classList.toggle('closed', closed);
+        const list = state.params.cardsClosed || (state.params.cardsClosed = []);
+        const i = list.indexOf(h.dataset.card);
+        if (closed && i < 0) list.push(h.dataset.card);
+        if (!closed && i >= 0) list.splice(i, 1);
+        saveParams();
+      };
+    });
+  }
 
   function readUI() {
     const p = state.params;
@@ -1904,6 +2166,9 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     p.titleFontScale = +$('titleFontScale').value / 100;
     p.titleHeightScale = +$('titleHeightScale').value / 100;
     p.titleLineHeightRatio = +$('titleLineHeightRatio').value;
+    p.titleLineGapRatio = +$('titleLineGapRatio').value;
+    p.bodyFontScale = +$('bodyFontScale').value / 100;
+    p.bodyHeightScale = +$('bodyHeightScale').value / 100;
     p.headerPadRatio = +$('headerPadRatio').value / 100;
     p.labelW = +$('labelW').value / 100;    p.accent = $('accent').value;
     p.dotColor = $('dotColor').value;
@@ -1912,6 +2177,13 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     p.fontFamily = $('fontFamily').value;
     p.radius = +$('radius').value / 1000;
     p.shadow = +$('shadow').value / 100;
+    // 表格白色区域：正文行高 / 行间距 / 行间分隔线粗细与浓度 / 上下留白
+    p.lineHeightRatio = +$('lineHeightRatio').value;
+    p.rowGapRatio = +$('rowGapRatio').value;
+    p.rowSepH = +$('rowSepH').value;
+    p.rowSepAlpha = +$('rowSepAlpha').value;
+    p.bodyPadTopRatio = +$('bodyPadTopRatio').value / 100;
+    p.bodyPadBottomRatio = +$('bodyPadBottomRatio').value / 100;
     p.showTable = $('showTable').checked;
     p.showLogo = $('showLogo').checked;
     p.logoScale = +$('logoScale').value / 100;
@@ -1924,11 +2196,11 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     p.rangesText = $('rangesText').value;
     p.rangeAuto = $('rangeAuto').checked;
 
-    p.rows = ROW_IDS.map((r) => ({
-      on: $(r.on).checked,
-      label: $(r.label).value,
-      type: $(r.type).value,
-      text: $(r.text).value
+    p.rows = rowEditors.map((el) => ({
+      on: el.on.checked,
+      label: el.label.value,
+      type: el.type.value,
+      text: el.text.value
     }));
 
     // 导出 / 视图设置（同样持久化）
@@ -1952,20 +2224,23 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     $('outTitleScale').textContent = $('titleFontScale').value + '%';
     $('outTitleHeight').textContent = $('titleHeightScale').value + '%';
     $('outTitleLineH').textContent = (+$('titleLineHeightRatio').value).toFixed(2);
+    $('outTitleLineGap').textContent = (+$('titleLineGapRatio').value).toFixed(2);
+    $('outBodyFont').textContent = $('bodyFontScale').value + '%';
+    $('outBodyHeight').textContent = $('bodyHeightScale').value + '%';
     $('outHeaderPad').textContent = $('headerPadRatio').value + '%';
     $('outRadius').textContent = $('radius').value;
     $('outShadow').textContent = $('shadow').value + '%';
+    $('outLineH').textContent = (+$('lineHeightRatio').value).toFixed(2);
+    $('outRowGap').textContent = (+$('rowGapRatio').value).toFixed(2);
+    $('outSepH').textContent = (+$('rowSepH').value).toFixed(1).replace(/\.0$/, '');
+    $('outSepAlpha').textContent = (+$('rowSepAlpha').value).toFixed(2);
+    $('outBodyPadTop').textContent = $('bodyPadTopRatio').value + '%';
+    $('outBodyPadBottom').textContent = $('bodyPadBottomRatio').value + '%';
     $('outLogoScale').textContent = $('logoScale').value + '%';
     $('outCodeSize').textContent = $('codeSize').value + '%';
     $('outQuality').textContent = $('quality').value + '%';
 
-    ROW_IDS.forEach((r) => {
-      const off = !$(r.on).checked;
-      $(r.on).closest('.field').classList.toggle('off', off);
-      // 「自定义日期+随机时间」类型下，同一行文本框改成填日期，占位文字随之变化
-      $(r.text).placeholder = $(r.type).value === 'customdate' ? '2026.08.19（日期）' : r.ph;
-    });
-
+    syncRowEditors();        // 行块状态（显示开关 / 占位文字 / 快捷按钮）随类型变化
     syncRangeMap();          // 列表/勾选框变化后刷新映射清单与状态
   }
 
@@ -1984,6 +2259,9 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     $('titleFontScale').value = Math.round((p.titleFontScale == null ? 1 : p.titleFontScale) * 100);
     $('titleHeightScale').value = Math.round((p.titleHeightScale == null ? 1 : p.titleHeightScale) * 100);
     $('titleLineHeightRatio').value = p.titleLineHeightRatio == null ? 1.5 : p.titleLineHeightRatio;
+    $('titleLineGapRatio').value = p.titleLineGapRatio == null ? 0 : p.titleLineGapRatio;
+    $('bodyFontScale').value = Math.round((p.bodyFontScale == null ? 1.2 : p.bodyFontScale) * 100);
+    $('bodyHeightScale').value = Math.round((p.bodyHeightScale == null ? 1 : p.bodyHeightScale) * 100);
     $('headerPadRatio').value = Math.round((p.headerPadRatio == null ? 1.8 : p.headerPadRatio) * 100);
     $('labelW').value = Math.round((p.labelW == null ? 1 : p.labelW) * 100);
     $('accent').value = p.accent;
@@ -1993,6 +2271,12 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     $('fontFamily').value = p.fontFamily;
     $('radius').value = Math.round(p.radius * 1000);
     $('shadow').value = Math.round(p.shadow * 100);
+    $('lineHeightRatio').value = p.lineHeightRatio == null ? 1.35 : p.lineHeightRatio;
+    $('rowGapRatio').value = p.rowGapRatio == null ? 0.18 : p.rowGapRatio;
+    $('rowSepH').value = p.rowSepH == null ? 1 : p.rowSepH;
+    $('rowSepAlpha').value = p.rowSepAlpha == null ? 0.18 : p.rowSepAlpha;
+    $('bodyPadTopRatio').value = Math.round((p.bodyPadTopRatio == null ? 1 : p.bodyPadTopRatio) * 100);
+    $('bodyPadBottomRatio').value = Math.round((p.bodyPadBottomRatio == null ? 1 : p.bodyPadBottomRatio) * 100);
     $('showTable').checked = p.showTable;
     $('showLogo').checked = p.showLogo;
     $('logoScale').value = Math.round(p.logoScale * 100);
@@ -2002,13 +2286,7 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     $('codeSize').value = p.codeSize * 100;
     $('rangesText').value = p.rangesText == null ? '' : p.rangesText;
     $('rangeAuto').checked = p.rangeAuto !== false;
-    ROW_IDS.forEach((r) => {
-      const row = p.rows[r.idx] || {};
-      $(r.on).checked = row.on !== false;
-      $(r.label).value = row.label || '';
-      $(r.type).value = row.type || 'text';
-      $(r.text).value = row.text || '';
-    });
+    buildRowEditors();               // 行数动态：按参数重建行块
     // 导出 / 视图设置（缺省时回落到 HTML 初值）
     if (p.format != null) $('format').value = p.format;
     if (p.quality != null) $('quality').value = p.quality;
@@ -2016,6 +2294,7 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     if (p.maxEdge != null) $('maxEdge').value = p.maxEdge;
     if (p.fitView != null) $('fitView').checked = !!p.fitView;
     readUI();
+    applyCards();
     document.querySelectorAll('#segPos button').forEach((b) => b.classList.toggle('active', b.dataset.pos === p.position));
   }
 
@@ -2476,34 +2755,11 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
       el.addEventListener('change', () => { readUI(); saveParams(); });
       el.addEventListener('input', () => { readUI(); saveParams(); });
     });
-    ROW_IDS.forEach((r) => {
-      [r.on, r.label, r.type, r.text].forEach((id) => {
-        const el = $(id);
-        el.addEventListener('input', () => { readUI(); scheduleRender(); saveParams(); });
-        el.addEventListener('change', () => { readUI(); scheduleRender(); saveParams(); });
-      });
-    });
+    // 行内容：行块里的控件在创建时就绑好了事件（makeRowEditor → onRowEdit）
+    $('btnAddRow').onclick = () => addRow();
 
-    // 快捷按钮（会改写行内容 → 一并持久化）
-    /* 普通行：写入完整时间并切成「自定义文本」；
-     * 若当前是「自定义日期+随机时间」行，则只写日期、类型保持不变（免得把随机时间弄丢）。 */
-    const fillRow = (textId, d) => {
-      const t = $(textId);
-      const ty = $(textId.replace('text', 'type'));
-      if (ty.value === 'customdate') t.value = WM.formatDate(d, 'date');
-      else { t.value = WM.formatDate(d, 'datetime'); ty.value = 'text'; }
-      t.dataset.manual = '1';
-      readUI(); scheduleRender(); saveParams();
-    };
-    document.querySelectorAll('[data-now]').forEach((b) => {
-      b.onclick = () => fillRow(b.dataset.now, new Date());
-    });
-    document.querySelectorAll('[data-filetime]').forEach((b) => {
-      b.onclick = () => {
-        const item = state.items[state.active];
-        fillRow(b.dataset.filetime, (item && item.date) || new Date());
-      };
-    });
+    // 折叠卡（状态持久化）
+    bindCards();
 
     // 队列
     $('btnClear').onclick = () => { clearQueue(); toast('已清空队列'); };

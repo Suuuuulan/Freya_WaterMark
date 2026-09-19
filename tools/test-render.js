@@ -119,8 +119,8 @@ setTimeout(() => {
   // 表格高度受「与右下防伪块共存」的等比缩放约束，按算出的 scale 校验
   const t1 = res.metrics;
   const derivedH = t1.headerH + t1.padBodyTop + t1.padBottom +
-    t1.rows.reduce((s, r) => s + r.h + t1.rowGap, 0) - (t1.rows.length ? t1.rowGap : 0);
-  check('表格高度与各部分之和一致', near(res.h, derivedH, 1.5),
+    t1.rows.reduce((s, r) => s + r.h + t1.rowGap + t1.sepH, 0) - (t1.rows.length ? t1.rowGap + t1.sepH : 0);
+  check('表格高度与各部分之和一致（含行间分隔线占位）', near(res.h, derivedH, 1.5),
     'got ' + res.h.toFixed(1) + ' 期望 ' + derivedH.toFixed(1));
   const y = res.y;
   check('表格底边距 ≈ 40（参考 40）', near(H - (y + res.h), 40, 5), 'got ' + (H - y - res.h).toFixed(1));
@@ -254,20 +254,154 @@ setTimeout(() => {
   check('表格不透明度生效（tableOpacity=0.5）', !!tableFill && near(tableFill[6], 0.5, 0.02),
     'alpha=' + (tableFill ? tableFill[6] : 'n/a'));
 
-  console.log('\n3.5) 行间灰色分隔线（固定 1px）');
-  const seps = ctx.ops.filter((o) => o[0] === 'fillRect' && Math.abs(o[4] - WM.M.rowSepH) < 0.01);
+  console.log('\n3.5) 行间灰色分隔线（默认 1px）');
+  const sepH = res.metrics.sepH;
+  const seps = ctx.ops.filter((o) => o[0] === 'fillRect' && Math.abs(o[4] - sepH) < 0.01);
   check('两行之间绘制了分隔线', seps.length === 1, 'got ' + seps.length + ' 条');
+  check('默认粗细 = DEFAULTS.rowSepH = 1px', WM.DEFAULTS.rowSepH === 1 && near(sepH, 1, 0.02),
+    'sepH=' + sepH);
   if (seps.length) {
-    check('分隔线高度 = 1px', Math.abs(seps[0][4] - 1) < 0.01, 'got ' + seps[0][4]);
+    const m = res.metrics;
+    check('分隔线高度 = 面板上的粗细', Math.abs(seps[0][4] - sepH) < 0.01, 'got ' + seps[0][4]);
     check('分隔线为灰色', /rgba\(0,0,0/.test(seps[0][5]), 'got ' + seps[0][5]);
-    const sepExpectedY = y + res.metrics.bodyTop + res.metrics.rows[0].h + res.metrics.rowGap;
-    check('分隔线位于第一行与第二行之间', near(seps[0][2], sepExpectedY, 1.5),
-      'got ' + seps[0][2].toFixed(1) + ' 期望 ' + sepExpectedY.toFixed(1));
-    check('分隔线位于表格内部', seps[0][1] >= res.x && seps[0][1] + seps[0][3] <= res.x + res.w + 0.5,
+    // 分隔线左右一直顶到白色区域两端
+    check('分隔线长度 = 白区整宽（左右到边）',
+      near(seps[0][1], res.x, 0.5) && near(seps[0][3], res.w, 0.5),
+      'x=' + seps[0][1].toFixed(1) + ' w=' + seps[0][3].toFixed(1) + ' 表格=' + res.x.toFixed(1) + '..' + (res.x + res.w).toFixed(1));
+    // 垂直方向落在两行正中间：行盒底 → 下一行盒顶 这段带子里，线上下各占一半
+    const bandTop = y + m.bodyTop + m.rows[0].h;
+    const bandH = m.rowGap + m.sepH;
+    const mid = bandTop + bandH / 2;
+    check('分隔线垂直居中于两行之间', near(seps[0][2] + seps[0][4] / 2, mid, 1.5),
+      '线中点=' + (seps[0][2] + seps[0][4] / 2).toFixed(1) + ' 期望=' + mid.toFixed(1) + '（带子 ' + bandTop.toFixed(1) + '..' + (bandTop + bandH).toFixed(1) + '）');
+    check('线上下的空隙相等（rowGap/2 各一半）',
+      near(seps[0][2] - bandTop, bandTop + bandH - (seps[0][2] + seps[0][4]), 1.5),
+      '上=' + (seps[0][2] - bandTop).toFixed(1) + ' 下=' + (bandTop + bandH - seps[0][2] - seps[0][4]).toFixed(1));
+    check('分隔线位于表格内部', seps[0][1] >= res.x - 0.5 && seps[0][1] + seps[0][3] <= res.x + res.w + 0.5,
       'x=' + seps[0][1].toFixed(1) + ' w=' + seps[0][3].toFixed(1) + ' 表格=' + res.x.toFixed(1) + '..' + (res.x + res.w).toFixed(1));
   }
 
-  console.log('\n4) 圆点');
+  console.log('\n3.6) 面板可调：行高 / 行间距 / 分隔线粗细与浓度');
+  {
+    const cA = makeRecorder();
+    const resA = r.draw(cA, Object.assign({}, p, { rowSepH: 0 }), W, H, BASE, rows);
+    const sepA = cA.ops.filter((o) => o[0] === 'fillRect' && o[4] > 0 && o[4] <= 20 && /rgba\(0,0,0/.test(o[5]));
+    check('粗细 = 0 → 不画分隔线', sepA.length === 0, 'got ' + sepA.length);
+    check('粗细 = 0 → 也不再为分隔线留位置（表格变矮）', resA.metrics.h < res.h,
+      'h=' + resA.metrics.h.toFixed(1) + ' vs ' + res.h.toFixed(1));
+
+    const cB = makeRecorder();
+    const resB = r.draw(cB, Object.assign({}, p, { rowSepH: 6 }), W, H, BASE, rows);
+    const sepB = cB.ops.filter((o) => o[0] === 'fillRect' && Math.abs(o[4] - resB.metrics.sepH) < 0.01 && o[4] > 2);
+    check('粗细 = 6 → 画出的线就是 6px 高', sepB.length === 1 && near(sepB[0][4], 6, 0.05),
+      'got ' + (sepB[0] ? sepB[0][4] : 'n/a') + ' (metrics.sepH=' + resB.metrics.sepH.toFixed(2) + ')');
+    check('粗细变粗会把行推开（表格相应变高，1 个行间带）',
+      near(resB.metrics.h - res.h, resB.metrics.sepH - res.metrics.sepH, 0.6),
+      'Δh=' + (resB.metrics.h - res.h).toFixed(2) + ' ΔsepH=' + (resB.metrics.sepH - res.metrics.sepH).toFixed(2));
+
+    const cC = makeRecorder();
+    const resC = r.draw(cC, Object.assign({}, p, { rowSepAlpha: 0.5 }), W, H, BASE, rows);
+    const sepC = cC.ops.find((o) => o[0] === 'fillRect' && /rgba\(0,0,0/.test(o[5]));
+    check('浓度滑到 0.5 → 分隔线 rgba(0,0,0,0.5)', !!sepC && /rgba\(0,0,0,0?\.5\)/.test(sepC[5]),
+      sepC ? sepC[5] : 'n/a');
+
+    const cD = makeRecorder();
+    const resD = r.draw(cD, Object.assign({}, p, { lineHeightRatio: 2, rowGapRatio: 0.6 }), W, H, BASE, rows);
+    check('行高倍率 = 2 → lineH = 字号 ×2', near(resD.metrics.lineH, resD.metrics.fB * 2, 0.5),
+      'lineH=' + resD.metrics.lineH.toFixed(1) + ' fB=' + resD.metrics.fB.toFixed(1));
+    check('行高倍率变大 → 行盒跟着变高', resD.metrics.rows[0].h > res.metrics.rows[0].h,
+      resD.metrics.rows[0].h.toFixed(1) + ' > ' + res.metrics.rows[0].h.toFixed(1));
+    check('行间距倍率 = 0.6 → rowGap = 字号 ×0.6 且表格变高',
+      near(resD.metrics.rowGap, resD.metrics.fB * 0.6, 0.5) && resD.metrics.h > res.h,
+      'rowGap=' + resD.metrics.rowGap.toFixed(1));
+    check('文字仍然落在各自行盒内（行高变大不裁切）',
+      resD.metrics.h >= resD.metrics.rows.reduce((s, r) => s + r.h, 0),
+      'h=' + resD.metrics.h.toFixed(1));
+
+    const cE = makeRecorder();
+    const resE = r.draw(cE, Object.assign({}, p, { bodyPadTopRatio: 0, bodyPadBottomRatio: 0 }), W, H, BASE, rows);
+    check('上下留白 0% → 白区首行紧贴顶栏下沿',
+      near(resE.metrics.padBodyTop, 0, 0.01) && near(resE.metrics.padBottom, 0, 0.01),
+      'padBodyTop=' + resE.metrics.padBodyTop + ' padBottom=' + resE.metrics.padBottom);
+    check('上下留白 0% → 表格正好矮了原来那两条留白',
+      near(res.h - resE.metrics.h, res.metrics.padBodyTop + res.metrics.padBottom, 0.6),
+      'Δh=' + (res.h - resE.metrics.h).toFixed(1) + ' 留白和=' + (res.metrics.padBodyTop + res.metrics.padBottom).toFixed(1));
+
+    const cF = makeRecorder();
+    const resF = r.draw(cF, Object.assign({}, p, { bodyPadTopRatio: 2, bodyPadBottomRatio: 0.5 }), W, H, BASE, rows);
+    check('顶部留白 200% → padBodyTop 翻倍', near(resF.metrics.padBodyTop, res.metrics.padBodyTop * 2, 0.6),
+      resF.metrics.padBodyTop.toFixed(1) + ' vs ' + res.metrics.padBodyTop.toFixed(1));
+    check('底部留白 50% → padBottom 减半', near(resF.metrics.padBottom, res.metrics.padBottom * 0.5, 0.6),
+      resF.metrics.padBottom.toFixed(1) + ' vs ' + res.metrics.padBottom.toFixed(1));
+    check('默认倍率 = 1（不改动参考图实测留白）',
+      WM.DEFAULTS.bodyPadTopRatio === 1 && WM.DEFAULTS.bodyPadBottomRatio === 1);
+    check('底部留白默认比顶部大（参考图实测比例 1.54）',
+      near(res.metrics.padBottom / res.metrics.padBodyTop, 0.0226 / 0.0147, 0.02),
+      (res.metrics.padBottom / res.metrics.padBodyTop).toFixed(3));
+  }
+
+  console.log('\n3.7) 正文字高 / 标题行间距 / 字号解耦');
+  {
+    const cG = makeRecorder();
+    const resG = r.draw(cG, Object.assign({}, p, { bodyHeightScale: 1.4 }), W, H, BASE, rows);
+    const tG = resG.metrics;
+    const scales = cG.ops.filter((o) => o[0] === 'scale');
+    check('正文字高>1 → 每行做 scale(1,hs) 纵向拉伸',
+      scales.some((o) => near(o[1], 1, 0.01) && near(o[2], 1.4, 0.01)),
+      JSON.stringify(scales.slice(0, 3)));
+    const mid1 = resG.y + tG.bodyTop + tG.lineH / 2;
+    check('正文拉伸锚点 = 该行中线（不移位）',
+      cG.ops.some((o) => o[0] === 'translate' && near(o[2], mid1, 0.6) && near(o[1], resG.x + tG.bodyPadX, 0.6)),
+      'lineMid=' + mid1.toFixed(1));
+    check('正文字高不改变版式（行盒/表格高度不变）',
+      near(resG.metrics.lineH, res.metrics.lineH, 0.01) && near(resG.metrics.h, res.h, 0.01));
+    const cG1 = makeRecorder();
+    r.draw(cG1, p, W, H, BASE, rows);
+    check('正文字高=1 时不产生多余 scale（直绘）',
+      cG1.ops.filter((o) => o[0] === 'scale').length === 0,
+      JSON.stringify(cG1.ops.filter((o) => o[0] === 'scale')));
+
+    /* 折行标题：行间距只影响折行后的第二行起 */
+    const longTitle = '南京云之宝智算中心' + '某某某某某某某某某某某某某某某某某某某某某某某某某某某某某某某某某某某某';
+    const titleYs = (c, fH) => [...new Set(c.ops
+      .filter((o) => o[0] === 'fillText' && near(fontPx(o[5]), fH, 2))
+      .map((o) => Math.round(o[3] * 10) / 10))].sort((a, b) => a - b);
+    const cI = makeRecorder();
+    const resI = r.draw(cI, Object.assign({}, p, { title: longTitle, titleLS: 0, titleLineGapRatio: 0 }), W, H, BASE, rows);
+    const ysI = titleYs(cI, resI.metrics.fH);
+    check('长标题确实折行（测试前提）', resI.metrics.titleLines.length >= 2 && ysI.length >= 2,
+      'lines=' + resI.metrics.titleLines.length + ' ys=' + ysI.join(','));
+    const pitch0 = ysI.length >= 2 ? ysI[1] - ysI[0] : 0;
+    check('标题行间距 = 0 → 行距 = 行高', near(pitch0, resI.metrics.titleLineH, 0.8),
+      'pitch=' + pitch0.toFixed(1) + ' 行高=' + resI.metrics.titleLineH.toFixed(1));
+
+    const cJ = makeRecorder();
+    const resJ = r.draw(cJ, Object.assign({}, p, { title: longTitle, titleLS: 0, titleLineGapRatio: 0.5 }), W, H, BASE, rows);
+    const ysJ = titleYs(cJ, resJ.metrics.fH);
+    const pitch1 = ysJ.length >= 2 ? ysJ[1] - ysJ[0] : 0;
+    check('标题行间距 = 0.5 → 行距 = 行高 + 字号×0.5',
+      near(pitch1, resJ.metrics.titleLineH + resJ.metrics.fH * 0.5, 0.8),
+      'pitch=' + pitch1.toFixed(1) + ' 期望=' + (resJ.metrics.titleLineH + resJ.metrics.fH * 0.5).toFixed(1));
+    check('行间距把第二行推到更下面', pitch1 > pitch0, pitch0.toFixed(1) + ' → ' + pitch1.toFixed(1));
+    check('单行标题时行间距无副作用（版式不变）',
+      near(r.layout(Object.assign({}, p, { titleLineGapRatio: 0.5 }), BASE, rows).h,
+        r.layout(p, BASE, rows).h, 0.01));
+
+    /* 字号解耦：改正文字号不再拖动标题 */
+    const a1 = r.layout(Object.assign({}, p, { bodyFontScale: 2 }), BASE, rows);
+    const a0 = r.layout(p, BASE, rows);
+    check('正文字号 ×2 → 正文字号变大', near(a1.fB / a0.fB, 2 / 1.2, 0.02),
+      (a1.fB / a0.fB).toFixed(3) + ' 期望 ' + (2 / 1.2).toFixed(3));
+    check('正文字号 ×2 → 标题字号**不动**（已解耦）', near(a1.fH, a0.fH, 0.01),
+      a1.fH.toFixed(1) + ' vs ' + a0.fH.toFixed(1));
+    check('标题字号仍可单独缩放（titleFontScale）',
+      near(r.layout(Object.assign({}, p, { titleFontScale: 2 }), BASE, rows).fH, a0.fH * 2, 0.6));
+
+    check('默认只有两行内容（拍摄时间 / 地点）',
+      WM.DEFAULTS.rows.length === 2 && /拍摄时间/.test(WM.DEFAULTS.rows[0].label) && /地/.test(WM.DEFAULTS.rows[1].label),
+      JSON.stringify(WM.DEFAULTS.rows.map((r) => r.label)));
+  }
+
   const arcs = ctx.ops.filter((o) => o[0] === 'arc');
   check('绘制了圆点', arcs.length === 1, 'got ' + arcs.length);
   if (arcs.length) {

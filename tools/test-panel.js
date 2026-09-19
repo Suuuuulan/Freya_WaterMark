@@ -23,6 +23,7 @@ function mkEl(tag, id) {
   const el = {
     tagName: (tag || 'div').toUpperCase(), id: id || '', value: '', textContent: '', checked: false,
     children: [], parentNode: null, style: {}, dataset: {}, onclick: null, title: '', min: '', max: '', step: '',
+    get parentElement() { return el.parentNode; },
     _cls: new Set(),
     classList: {
       add(c) { el._cls.add(c); },
@@ -72,8 +73,7 @@ function mkEl(tag, id) {
         if (sel === 'input[type="range"]') return n.tagName === 'INPUT' && n.type === 'range';
         if (sel === 'input.ctl-edit') return n.tagName === 'INPUT' && n.classList.contains('ctl-edit');
         return false;
-      };
-      const walk = (node) => {
+      };      const walk = (node) => {
         for (const c of node.children) {
           if (match(c)) return c;
           const r = walk(c);
@@ -108,7 +108,8 @@ function mkEl(tag, id) {
           const st = parseFloat(el.step || '1');
           if (isFinite(st) && st > 0) n = lo + Math.round((n - lo) / st) * st;
           const dec = (String(st).split('.')[1] || '').length;
-          el._val = dec ? n.toFixed(dec) : String(Math.round(n));
+          // 浏览器里 value 是规范化后的「最短表示」：step=0.5 时给 '6.5'，不是 '6.50' / '6.0'
+          el._val = dec ? String(parseFloat(n.toFixed(dec))) : String(Math.round(n));
           return;
         }
       }
@@ -137,14 +138,24 @@ let els = {};          // 最近一次 boot 的元素，供 ①～⑦ 的断言�
 let ctls = [];
 let win = null;
 
-const OUT2SLIDER = {
-  outScale: 'scale', outMarginX: 'marginX', outMarginY: 'marginY', outOpacity: 'opacity',
-  outTableOpacity: 'tableOpacity', outTitleScale: 'titleFontScale', outTitleHeight: 'titleHeightScale',
-  outTitleLineH: 'titleLineHeightRatio', outHeaderPad: 'headerPadRatio', outLabelW: 'labelW',
-  outTitleLS: 'titleLS', outBodyLS: 'bodyLS', outLabelLS: 'labelLS', outValueGap: 'valueGapRatio',
-  outRadius: 'radius', outShadow: 'shadow', outLogoScale: 'logoScale', outCodeSize: 'codeSize',
-  outQuality: 'quality'
-};
+/* 控件结构**直接从产物 HTML 解析**，不再手写映射表
+ * （手写表会和真实 HTML 走偏：之前正是靠「手写的扁平结构」漏掉了
+ *  .ctl.grid2 一个 .ctl 里装两个滑块这件事）。 */
+const CONTROL_PAIRS = (() => {
+  const chunks = html.split('<div class="ctl').slice(1).map((s) => s.split('<div class="ctl')[0]);
+  const pairs = [];
+  chunks.forEach((s, gi) => {
+    const grid = /^ grid2"/.test(s);
+    const seq = [...s.matchAll(/<(?:output id="([^"]+)"|input type="range" id="([^"]+)")/g)]
+      .map((m) => ({ isOut: !!m[1], id: m[1] || m[2] }));
+    let cur = null;
+    for (const it of seq) {
+      if (it.isOut) cur = it.id;
+      else if (cur) { pairs.push({ out: cur, slider: it.id, grid, group: gi }); cur = null; }
+    }
+  });
+  return pairs;
+})();
 
 function bootOnce() {
   const myEls = {}; const myCtls = [];
@@ -158,38 +169,63 @@ function bootOnce() {
   e.accent.value = '#15a7fa'; e.dotColor.value = '#f4c647'; e.bgColor.value = '#f5f5f5';
   e.textColor.value = '#111111'; e.showTable.checked = true; e.showLogo.checked = true;
   e.showCode.checked = true;
-  ['r1', 'r2', 'r3'].forEach((r, i) => {
-    e[r + 'on'].checked = i < 2; e[r + 'label'].value = 'L' + i;
-    e[r + 'type'].value = 'text'; e[r + 'text'].value = 'T' + i;
-    e[r + 'text'].placeholder = i === 1 ? '地点内容，可留空' : '自定义文本内容';
-  });
-  for (const o of outs) {
-    const sid = OUT2SLIDER[o.id];
-    const r = ranges.find((x) => x.id === sid);
+  // 行内容不再是固定元素：由 app.js 按 params.rows 动态创建（见 buildRowEditors）
+  const groupCtl = new Map();
+  for (const pr of CONTROL_PAIRS) {
+    const r = ranges.find((x) => x.id === pr.slider);
     if (!r) continue;
-    const ctl = mkEl('div'); ctl.classList.add('ctl');
-    const label = mkEl('label');
-    // 必须复用 myEls 里的同一对象：app.js 通过 getElementById 拿到的就是它
-    const out = myEls[o.id];
+    const out = myEls[pr.out];                  // 必须复用 els 里的同一对象
+    const meta = outs.find((o) => o.id === pr.out);
     out.tagName = 'OUTPUT';
-    out.textContent = o.text;
-    const slider = myEls[sid];
+    out.textContent = meta ? meta.text : '';
+    const slider = myEls[pr.slider];
     slider.tagName = 'INPUT'; slider.type = 'range';
     slider.min = r.min; slider.max = r.max; slider.step = r.step; slider.value = r.value;
-    label.appendChild(out);
-    ctl.appendChild(label);
-    ctl.appendChild(slider);
-    myCtls.push({ ctl, out, slider, id: o.id });
+
+    let ctl, cell;
+    if (pr.grid) {
+      // 真实结构：<div class="ctl grid2"><div>(label>output + input)</div> ×2</div>
+      if (!groupCtl.has(pr.group)) {
+        const box = mkEl('div'); box.classList.add('ctl'); box.classList.add('grid2');
+        groupCtl.set(pr.group, box);
+      }
+      ctl = groupCtl.get(pr.group);
+      cell = mkEl('div');
+      const label = mkEl('label');
+      label.appendChild(out);
+      cell.appendChild(label);
+      cell.appendChild(slider);
+      ctl.appendChild(cell);
+    } else {
+      ctl = mkEl('div'); ctl.classList.add('ctl');
+      cell = ctl;
+      const label = mkEl('label');
+      label.appendChild(out);
+      ctl.appendChild(label);
+      ctl.appendChild(slider);
+    }
+    myCtls.push({ ctl, cell, out, slider, id: pr.out });
   }
   const nowBtns = [{ dataset: { now: 'r1text' }, onclick: null }];
   const fileBtns = [{ dataset: { filetime: 'r1text' }, onclick: null }];
+  // 折叠卡（2～6）：真实结构 <section class="card"><h2 class="card-h" data-card="n">…</h2><div class="card-body">…</div></section>
+  const cardNodes = [2, 3, 4, 5, 6].map((n) => {
+    const card = mkEl('section'); card.classList.add('card');
+    const h = mkEl('h2'); h.classList.add('card-h'); h.dataset.card = String(n);
+    const body = mkEl('div'); body.classList.add('card-body');
+    card.appendChild(h);
+    card.appendChild(body);
+    return { n, card, h, body };
+  });
   const doc = {
     body: mkEl('body'),
     getElementById: (id) => myEls[id] || (myEls[id] = mkEl('div', id)),
     createElement: (t) => mkEl(t),
     querySelectorAll: (sel) => (sel === 'output' ? myCtls.map((c) => c.out)
-      : sel === '[data-now]' ? nowBtns
-        : sel === '[data-filetime]' ? fileBtns : []),
+      : sel === 'input[type="range"]' ? myCtls.map((c) => c.slider)
+        : sel === '.card-h[data-card]' ? cardNodes.map((x) => x.h)
+          : sel === '[data-now]' ? nowBtns
+            : sel === '[data-filetime]' ? fileBtns : []),
     addEventListener() {}
   };
   const myWin = { addEventListener() {}, FREYA_LOGO_DATA_URL: '' };
@@ -209,7 +245,7 @@ function bootOnce() {
     function (t) { this.type = t; }, setTimeout, urlStub);
   win = myWin;
   els = myEls; ctls = myCtls;      // 供 ①～⑦ 的断言工具用
-  return { win: myWin, els: myEls, ctls: myCtls, doc, btns: { now: nowBtns, filetime: fileBtns } };
+  return { win: myWin, els: myEls, ctls: myCtls, doc, cards: cardNodes, btns: { now: nowBtns, filetime: fileBtns } };
 }
 bootOnce();
 
@@ -223,21 +259,21 @@ const pick = (outId) => ctls.find((c) => c.id === outId);
 const edit = (outId, typed, key) => {
   const c = pick(outId);
   c.out.dispatch('click');                                  // 进入编辑
-  const inp = c.ctl.querySelector('input.ctl-edit');
+  const inp = c.cell.querySelector('input.ctl-edit');        // 只看本 cell：grid2 里另一个 cell 也有
   if (!inp) return { inp: null, c };
   inp.value = typed;
   inp.dispatch('keydown', { key: key || 'Enter' });          // 提交 / 取消
-  return { inp, c, after: c.ctl.querySelector('input.ctl-edit') };
+  return { inp, c, after: c.cell.querySelector('input.ctl-edit') };
 };
 
 console.log('① 点击 output 是否进入就地编辑');
 {
   const c = pick('outTitleScale');
   c.out.dispatch('click');
-  const inp = c.ctl.querySelector('input.ctl-edit');
+  const inp = c.cell.querySelector('input.ctl-edit');
   t('点击后出现同位置 input', !!inp, inp ? 'type=' + inp.type + ' value=' + inp.value : '未出现');
   t('input 带 ctl-edit 类（用于样式）', !!inp && inp.classList.contains('ctl-edit'));
-  t('原 output 被替换掉', c.ctl.querySelector('input.ctl-edit') !== null);
+  t('原 output 被替换掉', c.cell.querySelector('input.ctl-edit') !== null);
   // 清理：取消
   inp && inp.dispatch('keydown', { key: 'Escape' });
 }
@@ -248,7 +284,7 @@ console.log('\n② 键入数值 → 滑块与参数同步（标题字号 100% �
   const c = pick('outTitleScale');
   t('滑块值已更新', c.slider.value === '150', 'slider=' + c.slider.value);
   t('params.titleFontScale = 1.5', win.__freya.params.titleFontScale === 1.5, 'got=' + win.__freya.params.titleFontScale);
-  t('编辑框已还原为 output', !c.ctl.querySelector('input.ctl-edit'));
+  t('编辑框已还原为 output', !c.cell.querySelector('input.ctl-edit'));
   t('output 文本被 readUI 回填', c.out.textContent === '150%', 'text=' + c.out.textContent);
 }
 
@@ -266,7 +302,7 @@ console.log('\n④ 非法输入还原（标题字号键入 abc）');
   edit('outTitleScale', 'abc');
   const c = pick('outTitleScale');
   t('参数未变', win.__freya.params.titleFontScale === before, 'got=' + win.__freya.params.titleFontScale);
-  t('编辑框已还原', !c.ctl.querySelector('input.ctl-edit'));
+  t('编辑框已还原', !c.cell.querySelector('input.ctl-edit'));
   t('文本还原为当前值', c.out.textContent === '200%', 'text=' + c.out.textContent);
 }
 
@@ -275,7 +311,7 @@ console.log('\n⑤ Escape 取消编辑（不提交）');
   edit('outRadius', '77', 'Escape');
   const c = pick('outRadius');
   t('参数未变', win.__freya.params.radius === 0.016, 'got=' + win.__freya.params.radius);
-  t('编辑框已还原', !c.ctl.querySelector('input.ctl-edit'));
+  t('编辑框已还原', !c.cell.querySelector('input.ctl-edit'));
 }
 
 console.log('\n⑥ 小数与百分比两种格式都能解析');
@@ -335,6 +371,22 @@ const inWindow = (shot, range) => {
 };
 const setText = (el, v) => { el.value = v; el.dispatch('input'); };
 const rowText = (box, i) => box.children[i].children.map((c) => c.textContent).join('|');
+/* 行块是 app.js 用 createElement 动态创建的，这里按结构把它拆出来（按标签查找，避免依赖顺序） */
+const flatten = (n, out) => { out.push(n); n.children.forEach((c) => flatten(c, out)); return out; };
+const picks = (node, tag) => flatten(node, []).filter((x) => x.tagName === tag);
+const rowApi = (E, i) => {
+  const node = E.rowsBox.children[i];
+  const ins = picks(node, 'INPUT');
+  const btns = picks(node, 'BUTTON');
+  return {
+    node,
+    on: ins[0], label: ins[1],
+    type: picks(node, 'SELECT')[0],
+    text: picks(node, 'TEXTAREA')[0],
+    del: btns[0], nowBtn: btns[1], fileBtn: btns[2],
+    title: picks(node, 'LABEL')[0]
+  };
+};
 /* 让随机变成确定值：0 → 区间起点，0.999… → 区间末端 */
 const withRandom = (v, fn) => { const o = Math.random; Math.random = () => v; try { return fn(); } finally { Math.random = o; } };
 
@@ -509,18 +561,19 @@ const NAMES = ['IMG_0001.jpg', 'IMG_0002.jpg', 'IMG_0003.jpg', 'IMG_0004.jpg'];
     setText(E.rangesText, USER_RANGES);
     await importFiles(NAMES);
 
-    E.r1type.value = 'customdate'; E.r1type.dispatch('change');
-    t('切到该类型后占位文字变成日期提示', E.r1text.placeholder === '2026.08.19（日期）', E.r1text.placeholder);
+    const r1 = rowApi(E, 0);
+    r1.type.value = 'customdate'; r1.type.dispatch('change');
+    t('切到该类型后占位文字变成日期提示', r1.text.placeholder === '2026.08.19（日期）', r1.text.placeholder);
     t('状态/映射清单不受影响', E.rangeStatus.textContent === '4 个时间段 · 已与队列一致', E.rangeStatus.textContent);
 
     drawn.length = 0;
-    setText(E.r1text, '2026-8-9');          // 顺带验证宽松格式与自动补零
+    setText(r1.text, '2026-8-9');          // 顺带验证宽松格式与自动补零
     await flush(150);
     const want = '2026.08.09' + S.items[0].shot;
     t('画到图上的拍摄时间 = 自定义日期 + 区间随机时刻', drawnText().includes(want), 'want=' + want + ' got=' + drawnText().slice(0, 120));
 
     drawn.length = 0;
-    setText(E.r1text, '不是日期');           // 日期写错 → 退回图片自身日期
+    setText(r1.text, '不是日期');           // 日期写错 → 退回图片自身日期
     await flush(150);
     t('日期填错时退回图片自身日期（不再是 2026.08.09）',
       !drawnText().includes('2026.08.09') && drawnText().includes('2026.08.19' + S.items[0].shot),
@@ -529,29 +582,160 @@ const NAMES = ['IMG_0001.jpg', 'IMG_0002.jpg', 'IMG_0003.jpg', 'IMG_0004.jpg'];
     // 还没有分配时间段时：自定义日期 + 图片自身时间（至少日期是自定义的）
     E.btnClearRanges.dispatch('click');
     drawn.length = 0;
-    setText(E.r1text, '2025.01.02');        // 触发重绘
+    setText(r1.text, '2025.01.02');        // 触发重绘
     await flush(150);
     t('没有时间段时 = 自定义日期 + 图片自身时间',
       drawnText().includes('2025.01.02' + WM.formatDate(S.items[0].date, 'time')),
       drawnText().slice(0, 120));
 
     // 快捷按钮：自定义日期行上只写日期、不把类型改掉
-    b.btns.filetime[0].onclick();
-    t('「用图片时间」只写入日期', E.r1text.value === '2026.08.19', E.r1text.value);
-    t('「用图片时间」保持「自定义日期+随机时间」类型', E.r1type.value === 'customdate', E.r1type.value);
-    b.btns.now[0].onclick();
-    t('「用当前时间」也只写入日期', /^\d{4}\.\d{2}\.\d{2}$/.test(E.r1text.value), E.r1text.value);
-    t('「用当前时间」同样保持类型', E.r1type.value === 'customdate', E.r1type.value);
+    r1.fileBtn.onclick();
+    t('「用图片时间」只写入日期', r1.text.value === '2026.08.19', r1.text.value);
+    t('「用图片时间」保持「自定义日期+随机时间」类型', r1.type.value === 'customdate', r1.type.value);
+    r1.nowBtn.onclick();
+    t('「用当前时间」也只写入日期', /^\d{4}\.\d{2}\.\d{2}$/.test(r1.text.value), r1.text.value);
+    t('「用当前时间」同样保持类型', r1.type.value === 'customdate', r1.type.value);
 
     // 切回普通类型：占位文字恢复
-    E.r1type.value = 'datetime'; E.r1type.dispatch('change');
-    t('切回「拍摄时间」后占位文字恢复', E.r1text.placeholder === '自定义文本内容', E.r1text.placeholder);
+    r1.type.value = 'datetime'; r1.type.dispatch('change');
+    t('切回「拍摄时间」后占位文字变成「自动取图片时间」', /自动取图片时间/.test(r1.text.placeholder), r1.text.placeholder);
     drawn.length = 0;
-    setText(E.r1text, '2026.08.19 10:59');
+    setText(r1.text, '2026.08.19 10:59');
     await flush(150);
     t('切回后日期重新来自图片文件（自定义日期不再生效）',
       !drawnText().includes('2026.08.09') && !drawnText().includes('2025.01.02'),
       drawnText().slice(0, 120));
+  }
+
+  console.log('\n⑲ 表格白色区域参数（行高 / 行间距 / 分隔线粗细与浓度）');
+  {
+    const P = win.__freya.params;                    // 最近一次 boot 的实例
+    edit('outSepH', '6');
+    t('分隔线粗细 6 → params.rowSepH = 6', P.rowSepH === 6, 'got=' + P.rowSepH);
+    t('回填文本 = 6', pick('outSepH').out.textContent === '6', pick('outSepH').out.textContent);
+    edit('outSepH', '99');
+    t('超范围按 max=12 夹取', P.rowSepH === 12, 'got=' + P.rowSepH);
+    edit('outLineH', '1.7');
+    t('正文行高 1.7 → params.lineHeightRatio = 1.7', P.lineHeightRatio === 1.7, 'got=' + P.lineHeightRatio);
+    edit('outRowGap', '0.4');
+    t('行间距 0.4 → params.rowGapRatio = 0.4', P.rowGapRatio === 0.4, 'got=' + P.rowGapRatio);
+    edit('outSepAlpha', '0.5');
+    t('分隔线浓度 0.5 → params.rowSepAlpha = 0.5', P.rowSepAlpha === 0.5, 'got=' + P.rowSepAlpha);
+    edit('outSepH', '0');
+    t('粗细可以调到 0（关掉分隔线）', P.rowSepH === 0, 'got=' + P.rowSepH);
+    edit('outBodyPadTop', '40');
+    t('顶部留白 40% → params.bodyPadTopRatio = 0.4', P.bodyPadTopRatio === 0.4, 'got=' + P.bodyPadTopRatio);
+    edit('outBodyPadBottom', '0');
+    t('底部留白 0% → params.bodyPadBottomRatio = 0', P.bodyPadBottomRatio === 0, 'got=' + P.bodyPadBottomRatio);
+
+    const saved = JSON.parse(store['freya-watermark.params.v1'] || '{}');
+    t('6 项都已入库',
+      saved.rowSepH === 0 && saved.lineHeightRatio === 1.7 && saved.rowGapRatio === 0.4 && saved.rowSepAlpha === 0.5 &&
+      saved.bodyPadTopRatio === 0.4 && saved.bodyPadBottomRatio === 0,
+      JSON.stringify([saved.rowSepH, saved.lineHeightRatio, saved.rowGapRatio, saved.rowSepAlpha,
+        saved.bodyPadTopRatio, saved.bodyPadBottomRatio]));
+    const b3 = bootOnce();
+    const P3 = b3.win.__freya.params;
+    t('重启后 6 项都恢复',
+      P3.rowSepH === 0 && P3.lineHeightRatio === 1.7 && P3.rowGapRatio === 0.4 && P3.rowSepAlpha === 0.5 &&
+      P3.bodyPadTopRatio === 0.4 && P3.bodyPadBottomRatio === 0,
+      JSON.stringify([P3.rowSepH, P3.lineHeightRatio, P3.rowGapRatio, P3.rowSepAlpha,
+        P3.bodyPadTopRatio, P3.bodyPadBottomRatio]));
+    t('重启后滑块值也恢复',
+      b3.els.rowSepH.value === '0' && b3.els.lineHeightRatio.value === '1.7' && b3.els.bodyPadTopRatio.value === '40',
+      b3.els.rowSepH.value + ' / ' + b3.els.lineHeightRatio.value + ' / ' + b3.els.bodyPadTopRatio.value);
+  }
+
+  console.log('\n⑳ 回归：grid2 右半边就地编辑不会改到左半边');
+  {
+    const P = win.__freya.params;
+    const left = P.lineHeightRatio;
+    edit('outRowGap', '0.44');
+    t('右侧「行间距」只改 rowGapRatio', P.rowGapRatio === 0.44, 'got=' + P.rowGapRatio);
+    t('左侧「行高」不受影响（以前会被 0.44 夹成 1）', P.lineHeightRatio === left, 'got=' + P.lineHeightRatio + ' 期望 ' + left);
+    const top = P.bodyPadTopRatio;
+    edit('outBodyPadBottom', '25');
+    t('右侧「底部留白」只改 bodyPadBottomRatio', P.bodyPadBottomRatio === 0.25, 'got=' + P.bodyPadBottomRatio);
+    t('左侧「顶部留白」不受影响', P.bodyPadTopRatio === top, 'got=' + P.bodyPadTopRatio + ' 期望 ' + top);
+    const sepAlpha = P.rowSepAlpha;
+    edit('outSepH', '3');
+    t('左侧「粗细」只改 rowSepH', P.rowSepH === 3, 'got=' + P.rowSepH);
+    t('右侧「浓度」不受影响', P.rowSepAlpha === sepAlpha, 'got=' + P.rowSepAlpha + ' 期望 ' + sepAlpha);
+  }
+
+  console.log('\n㉑ 行内容可增删（默认两行）');
+  {
+    delete store['freya-watermark.params.v1'];
+    const b4 = bootOnce();
+    const E4 = b4.els;
+    const P4 = b4.win.__freya.params;
+    t('默认正好两行', E4.rowsBox.children.length === 2 && P4.rows.length === 2,
+      'dom=' + E4.rowsBox.children.length + ' params=' + P4.rows.length);
+    t('默认第 1 行 = 拍摄时间（datetime 类型）',
+      /拍摄时间/.test(rowApi(E4, 0).label.value) && rowApi(E4, 0).type.value === 'datetime',
+      rowApi(E4, 0).label.value + ' / ' + rowApi(E4, 0).type.value);
+    t('默认第 2 行 = 地点（text 类型）',
+      /地/.test(rowApi(E4, 1).label.value) && rowApi(E4, 1).type.value === 'text',
+      rowApi(E4, 1).label.value + ' / ' + rowApi(E4, 1).type.value);
+    t('行标题按序号渲染', rowApi(E4, 0).title.textContent === '第 1 行' && rowApi(E4, 1).title.textContent === '第 2 行',
+      rowApi(E4, 0).title.textContent + ' / ' + rowApi(E4, 1).title.textContent);
+
+    E4.btnAddRow.dispatch('click');
+    t('点「添加一行」→ 3 行', E4.rowsBox.children.length === 3 && P4.rows.length === 3,
+      'dom=' + E4.rowsBox.children.length + ' params=' + P4.rows.length);
+    const r3 = rowApi(E4, 2);
+    t('新行标题 = 第 3 行', r3.title.textContent === '第 3 行', r3.title.textContent);
+    r3.label.value = '备注:'; r3.label.dispatch('input');
+    setText(r3.text, '已验收');
+    t('新行内容写入 params.rows[2]',
+      P4.rows[2].label === '备注:' && P4.rows[2].text === '已验收',
+      JSON.stringify(P4.rows[2]));
+    const saved = JSON.parse(store['freya-watermark.params.v1'] || '{}');
+    t('新行已持久化（rows.length = 3）', saved.rows && saved.rows.length === 3, JSON.stringify(saved.rows && saved.rows.length));
+
+    const b5 = bootOnce();
+    t('重启后仍是 3 行且内容恢复',
+      b5.els.rowsBox.children.length === 3 && rowApi(b5.els, 2).label.value === '备注:',
+      JSON.stringify(b5.win.__freya.params.rows.map((r) => r.label)));
+
+    rowApi(b5.els, 1).del.dispatch('click');
+    t('点删除 → 2 行，且删掉的是第 2 行',
+      b5.els.rowsBox.children.length === 2 &&
+      b5.win.__freya.params.rows.map((r) => r.label).join(',') === '拍摄时间:,备注:',
+      b5.win.__freya.params.rows.map((r) => r.label).join(','));
+    t('删除后行标题重新编号',
+      rowApi(b5.els, 1).title.textContent === '第 2 行', rowApi(b5.els, 1).title.textContent);
+    rowApi(b5.els, 0).del.dispatch('click');
+    rowApi(b5.els, 0).del.dispatch('click');
+    t('至少保留一行（不会删空）', b5.els.rowsBox.children.length === 1 && b5.win.__freya.params.rows.length === 1,
+      'rows=' + b5.els.rowsBox.children.length);
+
+    const rOn = rowApi(b5.els, 0).on;
+    rOn.checked = false; rOn.dispatch('change');
+    t('取消勾选「显示」→ params.rows[0].on = false', b5.win.__freya.params.rows[0].on === false);
+    t('取消勾选后行块变灰（off 类）', rowApi(b5.els, 0).node.classList.contains('off'));
+  }
+
+  console.log('\n㉒ 折叠卡（2～6，状态持久化）');
+  {
+    delete store['freya-watermark.params.v1'];
+    const b6 = bootOnce();
+    const E6 = b6.els;
+    t('默认都是展开的', b6.cards.every((c) => !c.card.classList.contains('closed')),
+      b6.cards.map((c) => c.n + (c.card.classList.contains('closed') ? '关' : '开')).join(' '));
+    b6.cards[1].h.dispatch('click');      // 第 3 张（表格内容）
+    t('点标题收起该卡', b6.cards[1].card.classList.contains('closed'));
+    t('其它卡不受影响', !b6.cards[0].card.classList.contains('closed') && !b6.cards[2].card.classList.contains('closed'));
+    const saved = JSON.parse(store['freya-watermark.params.v1'] || '{}');
+    t('收起的卡号已入库', Array.isArray(saved.cardsClosed) && saved.cardsClosed.join(',') === '3',
+      JSON.stringify(saved.cardsClosed));
+    const b7 = bootOnce();
+    t('重启后保持收起', b7.cards[1].card.classList.contains('closed') && !b7.cards[0].card.classList.contains('closed'));
+    b7.cards[1].h.dispatch('click');
+    t('再点一下展开', !b7.cards[1].card.classList.contains('closed'));
+    t('展开后从存档里移除',
+      JSON.parse(store['freya-watermark.params.v1']).cardsClosed.join(',') === '',
+      JSON.stringify(JSON.parse(store['freya-watermark.params.v1']).cardsClosed));
   }
 
   console.log('\n' + (bad ? '✗ ' + bad + ' 项失败 / 共 ' + (ok + bad) : '✓ 全部通过（' + ok + ' 项）'));

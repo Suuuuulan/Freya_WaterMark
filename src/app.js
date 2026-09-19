@@ -195,23 +195,29 @@
 
   /* ---------------- 参数 ↔ 界面 ---------------- */
   const CONTROL_IDS = ['scale', 'marginX', 'marginY', 'opacity', 'tableOpacity', 'title', 'titleLS', 'bodyLS',
-    'labelLS', 'valueGapRatio', 'titleFontScale', 'titleHeightScale', 'titleLineHeightRatio', 'headerPadRatio',
+    'labelLS', 'valueGapRatio', 'titleFontScale', 'titleHeightScale', 'titleLineHeightRatio', 'titleLineGapRatio',
+    'headerPadRatio', 'bodyFontScale', 'bodyHeightScale',
     'labelW', 'accent', 'dotColor', 'bgColor', 'textColor', 'fontFamily', 'radius', 'shadow',
+    'lineHeightRatio', 'rowGapRatio', 'rowSepH', 'rowSepAlpha', 'bodyPadTopRatio', 'bodyPadBottomRatio',
     'showTable', 'showLogo', 'logoScale', 'showCode', 'codeLen', 'codeLabel', 'codeSize',
     'rangesText', 'rangeAuto'];
 
   /* 导出/视图设置：也纳入持久化（面板上「全部数据」都要存） */
   const EXPORT_IDS = ['format', 'quality', 'nameTpl', 'maxEdge', 'fitView'];
 
-  /* 让已有的 <output> 数值「点一下就地编辑」——不新增任何元素，排版不会变。
+  /* 让 <output> 数值「点一下就地编辑」——不新增任何元素，排版不会变。
    * 编辑时把 output 临时换成同尺寸的 input，提交后还原成 output（格式由 readUI 负责回填）。
-   * 取值范围来自同一个 .ctl 里的滑块，超范围自动夹取。 */
+   * 绑定方式：**从滑块出发找它自己的 output**（slider → parentElement → output）。
+   * 不能用 out.closest('.ctl')：.ctl.grid2 里一个 .ctl 装两个滑块，
+   * 那样右半边的数值会去改左边那个滑块（曾是个真 bug）。 */
   function bindOutputEditing() {
-    document.querySelectorAll('output').forEach((out) => {
-      if (out.dataset.editable) return;
-      const ctl = out.closest('.ctl');
-      const slider = ctl && ctl.querySelector('input[type="range"]');
-      if (!slider || !slider.id) return;      // 只有绑定到滑块的 output 才可编辑
+    document.querySelectorAll('input[type="range"]').forEach((slider) => {
+      if (!slider.id || slider.dataset.editBound) return;
+      const holder = slider.parentElement;          // 普通 .ctl，或 grid2 里的那个 cell
+      if (!holder) return;
+      const out = holder.querySelector('output');
+      if (!out || out.dataset.editable) return;     // 只有带数值显示的滑块才可编辑
+      slider.dataset.editBound = '1';
       out.dataset.editable = '1';
       out.title = '点击可直接输入数值';
       out.classList.add('editable');
@@ -223,9 +229,9 @@
           // 触发既有链路：readUI 会把 output 文本重写成新值（含 % / 小数位格式）
           slider.dispatchEvent(new Event('input', { bubbles: true }));
           slider.dispatchEvent(new Event('change', { bubbles: true }));
-          ctl.querySelector('input.ctl-edit')?.replaceWith(out);
+          holder.querySelector('input.ctl-edit')?.replaceWith(out);
         } else {
-          ctl.querySelector('input.ctl-edit')?.replaceWith(out);
+          holder.querySelector('input.ctl-edit')?.replaceWith(out);
           out.textContent = prevText;          // 非法输入 → 还原成原文本
         }
         out.dataset.editing = '';
@@ -261,11 +267,188 @@
     });
   }
 
-  const ROW_IDS = [1, 2, 3].map((i) => ({
-    on: 'r' + i + 'on', label: 'r' + i + 'label', type: 'r' + i + 'type', text: 'r' + i + 'text', idx: i - 1,
-    ph: '自定义文本内容'
-  }));
-  ROW_IDS[1].ph = '地点内容，可留空';       // r2 的占位文字与其它行不同，先记下来，切换行类型时恢复
+  /* ---------------- 行内容编辑器（可增删） ----------------
+   * 行数是动态的：面板里的行块全部由这里创建，并直接持有各控件引用
+   * （不再用固定的 r1/r2/r3 id，也不是写死三行）。 */
+  const ROW_TYPE_OPTIONS = [
+    ['datetime', '拍摄时间'],
+    ['customdate', '自定义日期+随机时间'],
+    ['date', '仅日期'],
+    ['time', '仅时间'],
+    ['text', '自定义文本']
+  ];
+  const ROW_TYPES_TIME = ['datetime', 'customdate', 'date', 'time'];
+  const MAX_ROWS = 8;
+  let rowEditors = [];
+
+  function makeRowEditor(row) {
+    const node = document.createElement('div');
+    node.className = 'ctl field';
+    const head = document.createElement('div');
+    head.className = 'field-head';
+    const title = document.createElement('label');
+    const tools = document.createElement('span');
+    tools.className = 'row-tools';
+    const chkWrap = document.createElement('label');
+    chkWrap.className = 'chk';
+    const on = document.createElement('input');
+    on.type = 'checkbox';
+    const chkText = document.createElement('span');
+    chkText.textContent = '显示';
+    chkWrap.appendChild(on);
+    chkWrap.appendChild(chkText);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn btn-mini';
+    del.textContent = '删除';
+    tools.appendChild(chkWrap);
+    tools.appendChild(del);
+    head.appendChild(title);
+    head.appendChild(tools);
+
+    const grid = document.createElement('div');
+    grid.className = 'grid2';
+    const label = document.createElement('input');
+    label.type = 'text';
+    label.placeholder = '标签（如 拍摄时间:）';
+    const type = document.createElement('select');
+    ROW_TYPE_OPTIONS.forEach((pair) => {
+      const opt = document.createElement('option');
+      opt.value = pair[0];
+      opt.textContent = pair[1];
+      type.appendChild(opt);
+    });
+    grid.appendChild(label);
+    grid.appendChild(type);
+    const text = document.createElement('textarea');
+    text.rows = 1;
+    text.spellcheck = false;
+    text.placeholder = '内容';
+
+    const quick = document.createElement('div');
+    quick.className = 'row small';
+    const nowBtn = document.createElement('button');
+    nowBtn.type = 'button'; nowBtn.className = 'btn btn-mini'; nowBtn.textContent = '用当前时间';
+    const fileBtn = document.createElement('button');
+    fileBtn.type = 'button'; fileBtn.className = 'btn btn-mini'; fileBtn.textContent = '用图片时间';
+    quick.appendChild(nowBtn);
+    quick.appendChild(fileBtn);
+
+    node.appendChild(head);
+    node.appendChild(grid);
+    node.appendChild(text);
+    node.appendChild(quick);
+
+    const el = { node, title, on, label, type, text, quick, nowBtn, fileBtn };
+    el.on.checked = row.on !== false;
+    el.label.value = row.label || '';
+    el.type.value = row.type || 'text';
+    el.text.value = row.text || '';
+    [el.on, el.label, el.type, el.text].forEach((c) => {
+      c.addEventListener('input', onRowEdit);
+      c.addEventListener('change', onRowEdit);
+    });
+    del.onclick = () => removeRow(el);
+    nowBtn.onclick = () => fillRow(el, new Date());
+    fileBtn.onclick = () => {
+      const item = state.items[state.active];
+      fillRow(el, (item && item.date) || new Date());
+    };
+    return el;
+  }
+
+  function buildRowEditors() {
+    if (!Array.isArray(state.params.rows) || !state.params.rows.length) {
+      state.params.rows = [{ on: true, label: '拍摄时间:', type: 'datetime', text: '' }];
+    }
+    const box = $('rowsBox');
+    box.innerHTML = '';
+    rowEditors = state.params.rows.map((row) => {
+      const el = makeRowEditor(row);
+      box.appendChild(el.node);
+      return el;
+    });
+    syncRowEditors();
+  }
+
+  /** 行块上的类型相关显示（第 n 行标题 / 显示开关变灰 / 占位文字 / 快捷按钮） */
+  function syncRowEditors() {
+    rowEditors.forEach((el, i) => {
+      el.idx = i;
+      el.title.textContent = '第 ' + (i + 1) + ' 行';
+      el.node.classList.toggle('off', !el.on.checked);
+      el.text.placeholder = el.type.value === 'customdate' ? '2026.08.19（日期）'
+        : el.type.value === 'text' ? '内容，可留空' : '自动取图片时间（可留空）';
+      el.quick.hidden = ROW_TYPES_TIME.indexOf(el.type.value) < 0;
+    });
+    $('rowHint').textContent = `共 ${rowEditors.length} 行（最多 ${MAX_ROWS} 行）`;
+  }
+
+  function onRowEdit() {
+    readUI();
+    scheduleRender();
+    saveParams();
+  }
+
+  /** 快捷填时间：普通行写入完整时间并切成「自定义文本」；
+   *  若当前是「自定义日期+随机时间」行，则只写日期、类型保持不变。 */
+  function fillRow(el, d) {
+    if (el.type.value === 'customdate') el.text.value = WM.formatDate(d, 'date');
+    else { el.text.value = WM.formatDate(d, 'datetime'); el.type.value = 'text'; }
+    el.text.dataset.manual = '1';
+    onRowEdit();
+  }
+
+  function addRow() {
+    if (rowEditors.length >= MAX_ROWS) { toast(`最多 ${MAX_ROWS} 行`); return; }
+    state.params.rows.push({ on: true, label: '', type: 'text', text: '' });
+    buildRowEditors();
+    readUI();
+    scheduleRender();
+    saveParams();
+    const last = rowEditors[rowEditors.length - 1];
+    if (last && last.label.focus) last.label.focus();
+    toast('已添加一行');
+  }
+
+  function removeRow(el) {
+    const i = rowEditors.indexOf(el);
+    if (i < 0) return;
+    if (rowEditors.length <= 1) { toast('至少保留一行'); return; }
+    state.params.rows.splice(i, 1);
+    buildRowEditors();
+    readUI();
+    scheduleRender();
+    saveParams();
+    toast('已删除第 ' + (i + 1) + ' 行');
+  }
+
+  /* ---------------- 折叠卡 ---------------- */
+  const cardHeads = Array.from(document.querySelectorAll('.card-h[data-card]'));
+
+  function applyCards() {
+    const closed = state.params.cardsClosed || [];
+    cardHeads.forEach((h) => {
+      const card = h.closest('.card');
+      if (card) card.classList.toggle('closed', closed.indexOf(h.dataset.card) >= 0);
+    });
+  }
+
+  function bindCards() {
+    cardHeads.forEach((h) => {
+      h.onclick = () => {
+        const card = h.closest('.card');
+        if (!card) return;
+        const closed = !card.classList.contains('closed');
+        card.classList.toggle('closed', closed);
+        const list = state.params.cardsClosed || (state.params.cardsClosed = []);
+        const i = list.indexOf(h.dataset.card);
+        if (closed && i < 0) list.push(h.dataset.card);
+        if (!closed && i >= 0) list.splice(i, 1);
+        saveParams();
+      };
+    });
+  }
 
   function readUI() {
     const p = state.params;
@@ -282,6 +465,9 @@
     p.titleFontScale = +$('titleFontScale').value / 100;
     p.titleHeightScale = +$('titleHeightScale').value / 100;
     p.titleLineHeightRatio = +$('titleLineHeightRatio').value;
+    p.titleLineGapRatio = +$('titleLineGapRatio').value;
+    p.bodyFontScale = +$('bodyFontScale').value / 100;
+    p.bodyHeightScale = +$('bodyHeightScale').value / 100;
     p.headerPadRatio = +$('headerPadRatio').value / 100;
     p.labelW = +$('labelW').value / 100;    p.accent = $('accent').value;
     p.dotColor = $('dotColor').value;
@@ -290,6 +476,13 @@
     p.fontFamily = $('fontFamily').value;
     p.radius = +$('radius').value / 1000;
     p.shadow = +$('shadow').value / 100;
+    // 表格白色区域：正文行高 / 行间距 / 行间分隔线粗细与浓度 / 上下留白
+    p.lineHeightRatio = +$('lineHeightRatio').value;
+    p.rowGapRatio = +$('rowGapRatio').value;
+    p.rowSepH = +$('rowSepH').value;
+    p.rowSepAlpha = +$('rowSepAlpha').value;
+    p.bodyPadTopRatio = +$('bodyPadTopRatio').value / 100;
+    p.bodyPadBottomRatio = +$('bodyPadBottomRatio').value / 100;
     p.showTable = $('showTable').checked;
     p.showLogo = $('showLogo').checked;
     p.logoScale = +$('logoScale').value / 100;
@@ -302,11 +495,11 @@
     p.rangesText = $('rangesText').value;
     p.rangeAuto = $('rangeAuto').checked;
 
-    p.rows = ROW_IDS.map((r) => ({
-      on: $(r.on).checked,
-      label: $(r.label).value,
-      type: $(r.type).value,
-      text: $(r.text).value
+    p.rows = rowEditors.map((el) => ({
+      on: el.on.checked,
+      label: el.label.value,
+      type: el.type.value,
+      text: el.text.value
     }));
 
     // 导出 / 视图设置（同样持久化）
@@ -330,20 +523,23 @@
     $('outTitleScale').textContent = $('titleFontScale').value + '%';
     $('outTitleHeight').textContent = $('titleHeightScale').value + '%';
     $('outTitleLineH').textContent = (+$('titleLineHeightRatio').value).toFixed(2);
+    $('outTitleLineGap').textContent = (+$('titleLineGapRatio').value).toFixed(2);
+    $('outBodyFont').textContent = $('bodyFontScale').value + '%';
+    $('outBodyHeight').textContent = $('bodyHeightScale').value + '%';
     $('outHeaderPad').textContent = $('headerPadRatio').value + '%';
     $('outRadius').textContent = $('radius').value;
     $('outShadow').textContent = $('shadow').value + '%';
+    $('outLineH').textContent = (+$('lineHeightRatio').value).toFixed(2);
+    $('outRowGap').textContent = (+$('rowGapRatio').value).toFixed(2);
+    $('outSepH').textContent = (+$('rowSepH').value).toFixed(1).replace(/\.0$/, '');
+    $('outSepAlpha').textContent = (+$('rowSepAlpha').value).toFixed(2);
+    $('outBodyPadTop').textContent = $('bodyPadTopRatio').value + '%';
+    $('outBodyPadBottom').textContent = $('bodyPadBottomRatio').value + '%';
     $('outLogoScale').textContent = $('logoScale').value + '%';
     $('outCodeSize').textContent = $('codeSize').value + '%';
     $('outQuality').textContent = $('quality').value + '%';
 
-    ROW_IDS.forEach((r) => {
-      const off = !$(r.on).checked;
-      $(r.on).closest('.field').classList.toggle('off', off);
-      // 「自定义日期+随机时间」类型下，同一行文本框改成填日期，占位文字随之变化
-      $(r.text).placeholder = $(r.type).value === 'customdate' ? '2026.08.19（日期）' : r.ph;
-    });
-
+    syncRowEditors();        // 行块状态（显示开关 / 占位文字 / 快捷按钮）随类型变化
     syncRangeMap();          // 列表/勾选框变化后刷新映射清单与状态
   }
 
@@ -362,6 +558,9 @@
     $('titleFontScale').value = Math.round((p.titleFontScale == null ? 1 : p.titleFontScale) * 100);
     $('titleHeightScale').value = Math.round((p.titleHeightScale == null ? 1 : p.titleHeightScale) * 100);
     $('titleLineHeightRatio').value = p.titleLineHeightRatio == null ? 1.5 : p.titleLineHeightRatio;
+    $('titleLineGapRatio').value = p.titleLineGapRatio == null ? 0 : p.titleLineGapRatio;
+    $('bodyFontScale').value = Math.round((p.bodyFontScale == null ? 1.2 : p.bodyFontScale) * 100);
+    $('bodyHeightScale').value = Math.round((p.bodyHeightScale == null ? 1 : p.bodyHeightScale) * 100);
     $('headerPadRatio').value = Math.round((p.headerPadRatio == null ? 1.8 : p.headerPadRatio) * 100);
     $('labelW').value = Math.round((p.labelW == null ? 1 : p.labelW) * 100);
     $('accent').value = p.accent;
@@ -371,6 +570,12 @@
     $('fontFamily').value = p.fontFamily;
     $('radius').value = Math.round(p.radius * 1000);
     $('shadow').value = Math.round(p.shadow * 100);
+    $('lineHeightRatio').value = p.lineHeightRatio == null ? 1.35 : p.lineHeightRatio;
+    $('rowGapRatio').value = p.rowGapRatio == null ? 0.18 : p.rowGapRatio;
+    $('rowSepH').value = p.rowSepH == null ? 1 : p.rowSepH;
+    $('rowSepAlpha').value = p.rowSepAlpha == null ? 0.18 : p.rowSepAlpha;
+    $('bodyPadTopRatio').value = Math.round((p.bodyPadTopRatio == null ? 1 : p.bodyPadTopRatio) * 100);
+    $('bodyPadBottomRatio').value = Math.round((p.bodyPadBottomRatio == null ? 1 : p.bodyPadBottomRatio) * 100);
     $('showTable').checked = p.showTable;
     $('showLogo').checked = p.showLogo;
     $('logoScale').value = Math.round(p.logoScale * 100);
@@ -380,13 +585,7 @@
     $('codeSize').value = p.codeSize * 100;
     $('rangesText').value = p.rangesText == null ? '' : p.rangesText;
     $('rangeAuto').checked = p.rangeAuto !== false;
-    ROW_IDS.forEach((r) => {
-      const row = p.rows[r.idx] || {};
-      $(r.on).checked = row.on !== false;
-      $(r.label).value = row.label || '';
-      $(r.type).value = row.type || 'text';
-      $(r.text).value = row.text || '';
-    });
+    buildRowEditors();               // 行数动态：按参数重建行块
     // 导出 / 视图设置（缺省时回落到 HTML 初值）
     if (p.format != null) $('format').value = p.format;
     if (p.quality != null) $('quality').value = p.quality;
@@ -394,6 +593,7 @@
     if (p.maxEdge != null) $('maxEdge').value = p.maxEdge;
     if (p.fitView != null) $('fitView').checked = !!p.fitView;
     readUI();
+    applyCards();
     document.querySelectorAll('#segPos button').forEach((b) => b.classList.toggle('active', b.dataset.pos === p.position));
   }
 
@@ -854,34 +1054,11 @@
       el.addEventListener('change', () => { readUI(); saveParams(); });
       el.addEventListener('input', () => { readUI(); saveParams(); });
     });
-    ROW_IDS.forEach((r) => {
-      [r.on, r.label, r.type, r.text].forEach((id) => {
-        const el = $(id);
-        el.addEventListener('input', () => { readUI(); scheduleRender(); saveParams(); });
-        el.addEventListener('change', () => { readUI(); scheduleRender(); saveParams(); });
-      });
-    });
+    // 行内容：行块里的控件在创建时就绑好了事件（makeRowEditor → onRowEdit）
+    $('btnAddRow').onclick = () => addRow();
 
-    // 快捷按钮（会改写行内容 → 一并持久化）
-    /* 普通行：写入完整时间并切成「自定义文本」；
-     * 若当前是「自定义日期+随机时间」行，则只写日期、类型保持不变（免得把随机时间弄丢）。 */
-    const fillRow = (textId, d) => {
-      const t = $(textId);
-      const ty = $(textId.replace('text', 'type'));
-      if (ty.value === 'customdate') t.value = WM.formatDate(d, 'date');
-      else { t.value = WM.formatDate(d, 'datetime'); ty.value = 'text'; }
-      t.dataset.manual = '1';
-      readUI(); scheduleRender(); saveParams();
-    };
-    document.querySelectorAll('[data-now]').forEach((b) => {
-      b.onclick = () => fillRow(b.dataset.now, new Date());
-    });
-    document.querySelectorAll('[data-filetime]').forEach((b) => {
-      b.onclick = () => {
-        const item = state.items[state.active];
-        fillRow(b.dataset.filetime, (item && item.date) || new Date());
-      };
-    });
+    // 折叠卡（状态持久化）
+    bindCards();
 
     // 队列
     $('btnClear').onclick = () => { clearQueue(); toast('已清空队列'); };
