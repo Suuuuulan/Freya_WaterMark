@@ -6,7 +6,14 @@
 
   const WM = window.FreyaWM;
   const Zip = window.FreyaZip;
-  if (!WM || !Zip) { console.error('依赖脚本未加载'); return; }
+  const P = window.FreyaParams;
+  const IMG = window.FreyaImaging;
+  const N = window.FreyaNaming;
+  if (!WM || !Zip || !P || !IMG || !N) { console.error('依赖脚本未加载'); return; }
+  /* 常用别名：调用处保持原样，实现分别落在 params / imaging / naming 三个模块里 */
+  const loadImageEl = IMG.loadImageEl, makeThumb = IMG.makeThumb, ensureImage = IMG.ensureImage;
+  const THUMB_EDGE = IMG.THUMB_EDGE;
+  const extFor = N.extFor, safeName = N.safeName, buildName = N.buildName;
 
   const $ = (id) => document.getElementById(id);
 
@@ -14,6 +21,7 @@
    * 只持久化「参数」，不持久化图片队列；code 是每张导出时随机生成的，不入库。
    * 隐私模式/禁用存储时 localStorage 会抛异常，全部包 try/catch 静默降级。 */
   const STORE_KEY = 'freya-watermark.params.v1';
+  let saveTimer = 0;                     // saveParamsSoon 的节流句柄
 
   function loadSavedParams() {
     const base = JSON.parse(JSON.stringify(WM.DEFAULTS));
@@ -31,7 +39,11 @@
     }
   }
 
+  /* 立即落盘（离散控件、change 事件、关闭页面时用这个）。
+   * 先清掉可能挂着的节流定时器，保证「最后一次写入」不会被旧值覆盖。 */
   function saveParams() {
+    clearTimeout(saveTimer);
+    saveTimer = 0;
     try {
       const out = JSON.parse(JSON.stringify(state.params));
       delete out.code;
@@ -39,15 +51,23 @@
     } catch (e) { /* 存储不可用则忽略 */ }
   }
 
+  /* 拖动滑块时的节流落盘：localStorage 是同步写，一次拖动会触发几十次序列化，
+   * 低端机上能感到卡顿；松手（change）时由 saveParams 立即补齐。 */
+  function saveParamsSoon() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveParams, 300);
+  }
+
   function clearSavedParams() {
+    clearTimeout(saveTimer);              // 否则待写入的旧值会在「恢复默认」后又把存档写回去
+    saveTimer = 0;
     try { localStorage.removeItem(STORE_KEY); } catch (e) { /* 忽略 */ }
   }
 
   /* ---------------- 状态 ---------------- */
   const state = {
-    items: [],          // { id, file, url, img, name, base, date, code, w, h }
+    items: [],          // { id, file, url, thumb, img, name, base, date, code, w, h, range, shot }
     active: -1,
-    previewCode: WM.randomCode(WM.DEFAULTS.codeLen),
     params: loadSavedParams(),
     busy: false
   };
@@ -123,7 +143,7 @@
       img.onload = () => {
         // 超大图（如 20000px 全景）在部分浏览器无法绘制，先降采样
         if (Math.max(img.naturalWidth, img.naturalHeight) <= MAX_DECODE_EDGE) {
-          resolve({ img, url });
+          resolve({ img, url, thumb: makeThumb(img, THUMB_EDGE) });
           return;
         }
         const k = MAX_DECODE_EDGE / Math.max(img.naturalWidth, img.naturalHeight);
@@ -131,9 +151,10 @@
         c.width = Math.round(img.naturalWidth * k);
         c.height = Math.round(img.naturalHeight * k);
         c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        const thumb = makeThumb(c, THUMB_EDGE);
         const img2 = new Image();
-        img2.onload = () => { URL.revokeObjectURL(url); resolve({ img: img2, url: img2.src }); };
-        img2.onerror = () => resolve({ img, url });
+        img2.onload = () => { URL.revokeObjectURL(url); resolve({ img: img2, url: img2.src, thumb }); };
+        img2.onerror = () => resolve({ img, url, thumb });
         img2.src = c.toDataURL('image/jpeg', 0.95);
       };
       img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
@@ -162,10 +183,12 @@
       const w = loaded.img.naturalWidth, h = loaded.img.naturalHeight;
       const item = {
         id: 'it' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-        file, url: loaded.url, img: loaded.img, name: file.name,
+        file, url: loaded.url, thumb: loaded.thumb || '', img: null, name: file.name,
         w, h, base: baseOf(w, h), date, range: null, shot: null,
         code: WM.randomCode(state.params.codeLen)
       };
+      // 导入只做「量尺寸 + 出缩略图」，全分辨率位图不留在这里（见 ensureImage）
+      loaded.img = null;
       state.items.push(item);
       fresh.push(item);
       added++;
@@ -193,17 +216,11 @@
     }
   }
 
-  /* ---------------- 参数 ↔ 界面 ---------------- */
-  const CONTROL_IDS = ['scale', 'marginX', 'marginY', 'opacity', 'tableOpacity', 'title', 'titleLS', 'bodyLS',
-    'labelLS', 'valueGapRatio', 'titleFontScale', 'titleHeightScale', 'titleLineHeightRatio', 'titleLineGapRatio',
-    'headerPadRatio', 'bodyFontScale', 'bodyHeightScale',
-    'labelW', 'accent', 'dotColor', 'bgColor', 'textColor', 'fontFamily', 'radius', 'shadow',
-    'lineHeightRatio', 'rowGapRatio', 'rowSepH', 'rowSepAlpha', 'bodyPadTopRatio', 'bodyPadBottomRatio',
-    'showTable', 'showLogo', 'logoScale', 'showCode', 'codeLen', 'codeLabel', 'codeSize',
-    'rangesText', 'rangeAuto'];
-
-  /* 导出/视图设置：也纳入持久化（面板上「全部数据」都要存） */
-  const EXPORT_IDS = ['format', 'quality', 'nameTpl', 'maxEdge', 'fitView'];
+  /* ---------------- 参数 ↔ 界面 ----------------
+   * 「哪个控件对应哪个参数、怎么换算、默认值多少」全部登记在 src/params.js，
+   * 这里只负责编排（读一次 → 刷新行块/映射清单 → 回显数字）。 */
+  const CONTROL_IDS = P.CONTROLS.map((e) => e.id);
+  const EXPORT_IDS = P.EXPORTS.map((e) => e.id);
 
   /* 让 <output> 数值「点一下就地编辑」——不新增任何元素，排版不会变。
    * 编辑时把 output 临时换成同尺寸的 input，提交后还原成 output（格式由 readUI 负责回填）。
@@ -224,14 +241,16 @@
 
       const commit = (raw, prevText) => {
         const v = parseFloat(String(raw).replace('%', '').trim());
+        // 顺序很重要：先把这个 input 换回 <output>，再触发 input/change。
+        // readUI 的回显走的是 getElementById，而编辑期间 output 是被 replaceWith 换下来的
+        // 脱离文档节点 —— 那时查不到、回显被静默跳过，表现就是「滑块动了、数字还是旧的」。
+        holder.querySelector('input.ctl-edit')?.replaceWith(out);
         if (isFinite(v)) {
           slider.value = String(v);            // 交给浏览器按 min/max/step 夹取
           // 触发既有链路：readUI 会把 output 文本重写成新值（含 % / 小数位格式）
           slider.dispatchEvent(new Event('input', { bubbles: true }));
           slider.dispatchEvent(new Event('change', { bubbles: true }));
-          holder.querySelector('input.ctl-edit')?.replaceWith(out);
         } else {
-          holder.querySelector('input.ctl-edit')?.replaceWith(out);
           out.textContent = prevText;          // 非法输入 → 还原成原文本
         }
         out.dataset.editing = '';
@@ -450,152 +469,31 @@
     });
   }
 
+  /* 读：声明表 → params（再加上动态行块）；回显数字、同步行块与映射清单 */
   function readUI() {
     const p = state.params;
-    p.scale = +$('scale').value / 100;
-    p.marginX = +$('marginX').value;
-    p.marginY = +$('marginY').value;
-    p.opacity = +$('opacity').value / 100;
-    p.tableOpacity = +$('tableOpacity').value / 100;
-    p.title = $('title').value;
-    p.titleLS = +$('titleLS').value;
-    p.bodyLS = +$('bodyLS').value;
-    p.labelLS = +$('labelLS').value;
-    p.valueGapRatio = +$('valueGapRatio').value;
-    p.titleFontScale = +$('titleFontScale').value / 100;
-    p.titleHeightScale = +$('titleHeightScale').value / 100;
-    p.titleLineHeightRatio = +$('titleLineHeightRatio').value;
-    p.titleLineGapRatio = +$('titleLineGapRatio').value;
-    p.bodyFontScale = +$('bodyFontScale').value / 100;
-    p.bodyHeightScale = +$('bodyHeightScale').value / 100;
-    p.headerPadRatio = +$('headerPadRatio').value / 100;
-    p.labelW = +$('labelW').value / 100;    p.accent = $('accent').value;
-    p.dotColor = $('dotColor').value;
-    p.bgColor = $('bgColor').value;
-    p.textColor = $('textColor').value;
-    p.fontFamily = $('fontFamily').value;
-    p.radius = +$('radius').value / 1000;
-    p.shadow = +$('shadow').value / 100;
-    // 表格白色区域：正文行高 / 行间距 / 行间分隔线粗细与浓度 / 上下留白
-    p.lineHeightRatio = +$('lineHeightRatio').value;
-    p.rowGapRatio = +$('rowGapRatio').value;
-    p.rowSepH = +$('rowSepH').value;
-    p.rowSepAlpha = +$('rowSepAlpha').value;
-    p.bodyPadTopRatio = +$('bodyPadTopRatio').value / 100;
-    p.bodyPadBottomRatio = +$('bodyPadBottomRatio').value / 100;
-    p.showTable = $('showTable').checked;
-    p.showLogo = $('showLogo').checked;
-    p.logoScale = +$('logoScale').value / 100;
-    p.showCode = $('showCode').checked;
-    p.codeLen = Math.max(1, +$('codeLen').value || 10);
-    p.codeLabel = $('codeLabel').value;
-    p.codeSize = +$('codeSize').value / 100;
-
-    // 时间段列表（第 n 行 → 队列第 n 张）
-    p.rangesText = $('rangesText').value;
-    p.rangeAuto = $('rangeAuto').checked;
-
+    P.readAll(p, $);
     p.rows = rowEditors.map((el) => ({
       on: el.on.checked,
       label: el.label.value,
       type: el.type.value,
       text: el.text.value
     }));
-
-    // 导出 / 视图设置（同样持久化）
-    p.format = $('format').value;
-    p.quality = +$('quality').value;
-    p.nameTpl = $('nameTpl').value;
-    p.maxEdge = +$('maxEdge').value || 0;
-    p.fitView = $('fitView').checked;
-
-    // 数值回显
-    $('outScale').textContent = $('scale').value + '%';
-    $('outMarginX').textContent = (+$('marginX').value).toFixed(1) + '%';
-    $('outMarginY').textContent = (+$('marginY').value).toFixed(1) + '%';
-    $('outOpacity').textContent = $('opacity').value + '%';
-    $('outTableOpacity').textContent = $('tableOpacity').value + '%';
-    $('outLabelW').textContent = $('labelW').value + '%';
-    $('outTitleLS').textContent = (+$('titleLS').value).toFixed(2);
-    $('outBodyLS').textContent = (+$('bodyLS').value).toFixed(2);
-    $('outLabelLS').textContent = (+$('labelLS').value).toFixed(2);
-    $('outValueGap').textContent = (+$('valueGapRatio').value).toFixed(2);
-    $('outTitleScale').textContent = $('titleFontScale').value + '%';
-    $('outTitleHeight').textContent = $('titleHeightScale').value + '%';
-    $('outTitleLineH').textContent = (+$('titleLineHeightRatio').value).toFixed(2);
-    $('outTitleLineGap').textContent = (+$('titleLineGapRatio').value).toFixed(2);
-    $('outBodyFont').textContent = $('bodyFontScale').value + '%';
-    $('outBodyHeight').textContent = $('bodyHeightScale').value + '%';
-    $('outHeaderPad').textContent = $('headerPadRatio').value + '%';
-    $('outRadius').textContent = $('radius').value;
-    $('outShadow').textContent = $('shadow').value + '%';
-    $('outLineH').textContent = (+$('lineHeightRatio').value).toFixed(2);
-    $('outRowGap').textContent = (+$('rowGapRatio').value).toFixed(2);
-    $('outSepH').textContent = (+$('rowSepH').value).toFixed(1).replace(/\.0$/, '');
-    $('outSepAlpha').textContent = (+$('rowSepAlpha').value).toFixed(2);
-    $('outBodyPadTop').textContent = $('bodyPadTopRatio').value + '%';
-    $('outBodyPadBottom').textContent = $('bodyPadBottomRatio').value + '%';
-    $('outLogoScale').textContent = $('logoScale').value + '%';
-    $('outCodeSize').textContent = $('codeSize').value + '%';
-    $('outQuality').textContent = $('quality').value + '%';
-
+    P.syncOutputs(p, $);
     syncRowEditors();        // 行块状态（显示开关 / 占位文字 / 快捷按钮）随类型变化
     syncRangeMap();          // 列表/勾选框变化后刷新映射清单与状态
   }
 
+  /* 写：params → 控件（缺省值来自 DEFAULTS，经 params.js 同一套换算） */
   function writeUI() {
     const p = state.params;
-    $('scale').value = Math.round(p.scale * 100);
-    $('marginX').value = p.marginX;
-    $('marginY').value = p.marginY;
-    $('opacity').value = Math.round(p.opacity * 100);
-    $('tableOpacity').value = Math.round((p.tableOpacity == null ? 1 : p.tableOpacity) * 100);
-    $('title').value = p.title;
-    $('titleLS').value = p.titleLS;
-    $('bodyLS').value = p.bodyLS;
-    $('labelLS').value = p.labelLS == null ? 0.185 : p.labelLS;
-    $('valueGapRatio').value = p.valueGapRatio == null ? 0.2 : p.valueGapRatio;
-    $('titleFontScale').value = Math.round((p.titleFontScale == null ? 1 : p.titleFontScale) * 100);
-    $('titleHeightScale').value = Math.round((p.titleHeightScale == null ? 1 : p.titleHeightScale) * 100);
-    $('titleLineHeightRatio').value = p.titleLineHeightRatio == null ? 1.5 : p.titleLineHeightRatio;
-    $('titleLineGapRatio').value = p.titleLineGapRatio == null ? 0 : p.titleLineGapRatio;
-    $('bodyFontScale').value = Math.round((p.bodyFontScale == null ? 1.2 : p.bodyFontScale) * 100);
-    $('bodyHeightScale').value = Math.round((p.bodyHeightScale == null ? 1 : p.bodyHeightScale) * 100);
-    $('headerPadRatio').value = Math.round((p.headerPadRatio == null ? 1.8 : p.headerPadRatio) * 100);
-    $('labelW').value = Math.round((p.labelW == null ? 1 : p.labelW) * 100);
-    $('accent').value = p.accent;
-    $('dotColor').value = p.dotColor;
-    $('bgColor').value = p.bgColor;
-    $('textColor').value = p.textColor;
-    $('fontFamily').value = p.fontFamily;
-    $('radius').value = Math.round(p.radius * 1000);
-    $('shadow').value = Math.round(p.shadow * 100);
-    $('lineHeightRatio').value = p.lineHeightRatio == null ? 1.35 : p.lineHeightRatio;
-    $('rowGapRatio').value = p.rowGapRatio == null ? 0.18 : p.rowGapRatio;
-    $('rowSepH').value = p.rowSepH == null ? 1 : p.rowSepH;
-    $('rowSepAlpha').value = p.rowSepAlpha == null ? 0.18 : p.rowSepAlpha;
-    $('bodyPadTopRatio').value = Math.round((p.bodyPadTopRatio == null ? 1 : p.bodyPadTopRatio) * 100);
-    $('bodyPadBottomRatio').value = Math.round((p.bodyPadBottomRatio == null ? 1 : p.bodyPadBottomRatio) * 100);
-    $('showTable').checked = p.showTable;
-    $('showLogo').checked = p.showLogo;
-    $('logoScale').value = Math.round(p.logoScale * 100);
-    $('showCode').checked = p.showCode;
-    $('codeLen').value = p.codeLen;
-    $('codeLabel').value = p.codeLabel;
-    $('codeSize').value = p.codeSize * 100;
-    $('rangesText').value = p.rangesText == null ? '' : p.rangesText;
-    $('rangeAuto').checked = p.rangeAuto !== false;
+    P.writeAll(p, $);
     buildRowEditors();               // 行数动态：按参数重建行块
-    // 导出 / 视图设置（缺省时回落到 HTML 初值）
-    if (p.format != null) $('format').value = p.format;
-    if (p.quality != null) $('quality').value = p.quality;
-    if (p.nameTpl != null) $('nameTpl').value = p.nameTpl;
-    if (p.maxEdge != null) $('maxEdge').value = p.maxEdge;
-    if (p.fitView != null) $('fitView').checked = !!p.fitView;
     readUI();
     applyCards();
     document.querySelectorAll('#segPos button').forEach((b) => b.classList.toggle('active', b.dataset.pos === p.position));
   }
+
 
   /* ---------------- 行内容求值 ---------------- */
   /* 「自定义日期+随机时间」行：日期来自该行文本框（如 2026.08.19），
@@ -722,9 +620,40 @@
 
   const preview = $('preview');
   const pctx = preview.getContext('2d');
-  let previewScale = 1;
 
-  function renderPreview() {
+  /* 预览背板（canvas 像素）长边上限。
+   * 以前直接把 canvas 建成原图尺寸：8192×8192 时约 268 MB，低配机/移动端直接分配失败，
+   * 每次拖滑块还要重绘上千万像素。水印版式全部按「短边等比」推导，
+   * 所以只要按显示尺寸建画板、再用 ctx.setTransform(k,…) 把坐标换回图片空间，
+   * 视觉结果与导出完全一致，绘制成本却掉一个数量级。 */
+  const PREVIEW_MAX_EDGE = 3200;
+
+  /** 算 CSS 显示尺寸 + 背板缩放系数 k（背板像素 ÷ 图片像素） */
+  function previewGeometry(item) {
+    const wrap = $('canvasWrap');
+    const availW = Math.max(80, (wrap.clientWidth || 0) - 36);
+    const availH = Math.max(80, (wrap.clientHeight || 0) - 36);
+    const fit = $('fitView').checked;
+    let cssW, cssH;
+    if (fit) {
+      const f = Math.min(availW / item.w, availH / item.h, 1);
+      cssW = item.w * f;
+      cssH = item.h * f;
+    } else {
+      cssW = item.w;                       // 关掉「适应窗口」= 1:1 像素，超出容器就滚动
+      cssH = item.h;
+    }
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const backLong = Math.min(Math.round(Math.max(cssW, cssH) * dpr), PREVIEW_MAX_EDGE);
+    return { cssW, cssH, k: Math.max(1e-4, backLong / Math.max(item.w, item.h)) };
+  }
+
+  /* 预览是异步的（可能要先解码原图），用一个自增序号丢弃过期结果：
+   * 连续切图/拖滑块时，只有最后一次调用的结果会被画上去。 */
+  let renderSeq = 0;
+
+  async function renderPreview() {
+    const seq = ++renderSeq;
     const item = state.items[state.active];
     if (!item) {
       preview.classList.remove('show');
@@ -734,47 +663,47 @@
     }
     $('empty').hidden = true;
 
-    const p = state.params;
-    const previewCode = state.previewCode;
+    let img;
+    try {
+      img = await ensureImage(item);
+    } catch (e) {
+      if (seq !== renderSeq) return;
+      preview.classList.remove('show');
+      $('imgMeta').textContent = `无法解码这张图片：${item.name}`;
+      return;
+    }
+    if (seq !== renderSeq) return;        // 期间又切图/改参数了，这次结果作废
 
-    // 画布始终按原图分辨率绘制（所见即所得），用 CSS 缩放显示
-    if (preview.width !== item.w || preview.height !== item.h) {
-      preview.width = item.w;
-      preview.height = item.h;
-      previewScale = 1;
+    const p = state.params;
+
+    const geo = previewGeometry(item);
+    const bw = Math.max(1, Math.round(item.w * geo.k));
+    const bh = Math.max(1, Math.round(item.h * geo.k));
+    if (preview.width !== bw || preview.height !== bh) {
+      preview.width = bw;
+      preview.height = bh;
     }
 
     pctx.setTransform(1, 0, 0, 1, 0, 0);
-    pctx.clearRect(0, 0, item.w, item.h);
-    pctx.drawImage(item.img, 0, 0, item.w, item.h);
+    pctx.clearRect(0, 0, bw, bh);
+    // 之后所有坐标仍用「图片坐标」：版式计算 / 水印定位一行都不用改
+    pctx.setTransform(geo.k, 0, 0, geo.k, 0, 0);
+    pctx.imageSmoothingEnabled = true;
+    pctx.imageSmoothingQuality = 'high';
+    pctx.drawImage(img, 0, 0, item.w, item.h);
 
-    const params = Object.assign({}, p, { code: previewCode });
+    const params = Object.assign({}, p, { code: codeFor(item) });
     renderer.draw(pctx, params, item.w, item.h, item.base, rowsFor(item));
 
-    preview.classList.add('show');
-    applyFit();
-    $('imgMeta').textContent = `${item.w} × ${item.h} · ${(item.file.size / 1024 / 1024).toFixed(2)} MB · ${item.name}` +
-      (item.shot ? ` · 拍摄时间 ${item.shot}` + (item.range ? `（区间 ${item.range.start}-${item.range.end}）` : '') : '');
-  }
-
-  function applyFit() {
-    if (!$('fitView').checked) {
-      preview.style.maxWidth = 'none';
-      preview.style.maxHeight = 'none';
-      preview.style.width = 'auto';
-      preview.style.height = 'auto';
-      return;
-    }
-    const wrap = $('canvasWrap');
-    const availW = wrap.clientWidth - 36;
-    const availH = wrap.clientHeight - 36;
-    const item = state.items[state.active];
-    if (!item) return;
-    const k = Math.min(availW / item.w, availH / item.h, 1);
+    // CSS 尺寸与背板解耦：背板被限流时浏览器只会轻微缩放，不影响版式判断
     preview.style.maxWidth = 'none';
     preview.style.maxHeight = 'none';
-    preview.style.width = Math.max(40, Math.round(item.w * k)) + 'px';
+    preview.style.width = Math.max(40, Math.round(geo.cssW)) + 'px';
     preview.style.height = 'auto';
+
+    preview.classList.add('show');
+    $('imgMeta').textContent = `${item.w} × ${item.h} · ${(item.file.size / 1024 / 1024).toFixed(2)} MB · ${item.name}` +
+      (item.shot ? ` · 拍摄时间 ${item.shot}` + (item.range ? `（区间 ${item.range.start}-${item.range.end}）` : '') : '');
   }
 
   /* ---------------- 队列 UI ---------------- */
@@ -786,7 +715,7 @@
       d.className = 'thumb' + (i === state.active ? ' active' : '');
       d.title = it.name;
       const im = document.createElement('img');
-      im.src = it.url;
+      im.src = it.thumb || it.url;       // 优先用 96px 缩略图，别让浏览器解码原图
       im.alt = it.name;
       d.appendChild(im);
       const x = document.createElement('button');
@@ -806,17 +735,27 @@
     syncRangeMap();          // 队列变化（增/删/清空）后同步时间段映射清单
   }
 
+  /* 只有 blob: 的 URL 才需要释放（超大图降采样后 url 是 data:，revoke 无效） */
+  const releaseUrl = (u) => { if (u && /^blob:/.test(u)) URL.revokeObjectURL(u); };
+
   function removeItem(i) {
     const it = state.items[i];
-    if (it) URL.revokeObjectURL(it.url);
+    if (!it) return;
+    releaseUrl(it.url);
+    IMG.release(it);
     state.items.splice(i, 1);
+    // 删掉的是当前图**之前**的项时，索引必须一起前移，
+    // 否则 active 指向的会变成原来那张的下一张 —— 表现为「删别人的图，预览却换图了」。
+    if (i < state.active) state.active--;
     if (state.active >= state.items.length) state.active = state.items.length - 1;
+    if (state.active < 0) state.active = -1;
     syncQueue();
     scheduleRender();
   }
 
   function clearQueue() {
-    state.items.forEach((it) => URL.revokeObjectURL(it.url));
+    state.items.forEach((it) => releaseUrl(it.url));
+    IMG.clear();
     state.items = [];
     state.active = -1;
     syncQueue();
@@ -832,8 +771,9 @@
     return { w: Math.round(item.w * k), h: Math.round(item.h * k), scaled: true };
   }
 
-  /* 单张渲染到新画布；超大图可能超出画布上限，返回 null */
-  function renderToCanvas(item, code, maxEdge) {
+  /* 单张渲染到新画布；超大图可能超出画布上限，返回 null。
+   * img 由调用方先 ensureImage 拿到（这里不碰网络/解码，方便失败时单独计数）。 */
+  function renderToCanvas(item, img, code, maxEdge) {
     const t = targetSize(item, maxEdge);
     let c, ctx;
     try {
@@ -844,7 +784,7 @@
       if (!ctx) return null;
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(item.img, 0, 0, t.w, t.h);
+      ctx.drawImage(img, 0, 0, t.w, t.h);
       const base = t.scaled ? baseOf(t.w, t.h) : item.base;
       const params = Object.assign({}, state.params, { code });
       renderer.draw(ctx, params, t.w, t.h, base, rowsFor(item));
@@ -869,37 +809,7 @@
     });
   }
 
-  function extFor(type) {
-    if (type === 'image/png') return 'png';
-    if (type === 'image/webp') return 'webp';
-    return 'jpg';
-  }
-
-  function safeName(s) {
-    return String(s).replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 80) || 'image';
-  }
-
-  function buildName(tpl, item, code, i, w, h) {
-    const d = item.date || new Date();
-    const p2 = (n) => (n < 10 ? '0' + n : '' + n);
-    const range = item.range
-      ? item.range.start.replace(':', '') + '-' + item.range.end.replace(':', '')
-      : p2(d.getHours()) + p2(d.getMinutes());
-    const shot = item.shot
-      ? item.shot.replace(':', '')
-      : p2(d.getHours()) + p2(d.getMinutes());
-    const out = String(tpl || '{name}_watermark')
-      .replace(/\{name\}/g, safeName(item.name))
-      .replace(/\{date\}/g, `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}`)
-      .replace(/\{time\}/g, `${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`)
-      .replace(/\{range\}/g, range)
-      .replace(/\{shot\}/g, shot)
-      .replace(/\{code\}/g, code)
-      .replace(/\{i\}/g, String(i + 1))
-      .replace(/\{w\}/g, String(w))
-      .replace(/\{h\}/g, String(h));
-    return (out.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 120) || 'image');
-  }
+  /* 文件名规则在 src/naming.js（纯函数），这里直接用顶部的别名 */
 
   function download(blob, filename) {
     const url = URL.createObjectURL(blob);
@@ -912,6 +822,21 @@
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
+  /* 一图一码：码固定存在 item.code 上，预览、导出、文件名里的 {code} 用同一个值。
+   * 这样「预览看到的码 = 下载下来的码」，同一张图重导（或换格式再导）码也不变。
+   * 只有位数被改过、或用户点「重新随机防伪码」时才会换新码。 */
+  function codeFor(item) {
+    const len = Math.max(1, Math.min(64, state.params.codeLen | 0));
+    if (!item.code || item.code.length !== len) item.code = WM.randomCode(len);
+    return item.code;
+  }
+
+  /** 给队列里（或指定的）全部图片重随机防伪码 */
+  function rerollCodes(list) {
+    const len = Math.max(1, Math.min(64, state.params.codeLen | 0));
+    (list || state.items).forEach((it) => { it.code = WM.randomCode(len); });
+  }
+
   async function exportOne() {
     const item = state.items[state.active];
     if (!item || state.busy) return;
@@ -920,8 +845,11 @@
     const type = $('format').value;
     const quality = (+$('quality').value) / 100;
     const maxEdge = +$('maxEdge').value || 0;
-    const code = WM.randomCode(state.params.codeLen);
-    const canvas = renderToCanvas(item, code, maxEdge);
+    const code = codeFor(item);          // 与预览同一个码
+    let img;
+    try { img = await ensureImage(item); }
+    catch (e) { setBusy(false); toast('导出失败：这张图片无法解码'); return; }
+    const canvas = renderToCanvas(item, img, code, maxEdge);
     if (!canvas) { setBusy(false); toast('导出失败：图片过大，超出浏览器画布上限（可设置「长边最大像素」后重试）'); return; }
     const blob = await canvasToBlob(canvas, type, quality);
     if (!blob) { setBusy(false); toast('导出失败：浏览器不支持该格式'); return; }
@@ -948,8 +876,10 @@
       const item = state.items[i];
       setBusy(true, `正在渲染 ${i + 1}/${state.items.length}…`, i / state.items.length);
       await nextFrame();
-      const code = WM.randomCode(state.params.codeLen);
-      const canvas = renderToCanvas(item, code, maxEdge);
+      const code = codeFor(item);        // 每张图自己的码（预览里看到的就是这个）
+      let img;
+      try { img = await ensureImage(item); } catch (e) { skipped++; continue; }
+      const canvas = renderToCanvas(item, img, code, maxEdge);
       if (!canvas) { skipped++; continue; }
       const blob = await canvasToBlob(canvas, type, quality);
       if (!blob) { skipped++; canvas.width = canvas.height = 0; continue; }
@@ -1041,18 +971,26 @@
     });
 
     // 参数控件（改动即持久化）
-    CONTROL_IDS.forEach((id) => {
+    // 滑块 input 高频触发 → 节流落盘；文本框/下拉/勾选等离散控件 → 立即落盘。
+    // change（松手、失焦）一律立即落盘，保证最后一次改动不丢。
+    const bindPersist = (id) => {
       const el = $(id);
       if (!el) return;
-      el.addEventListener('input', () => { readUI(); scheduleRender(); saveParams(); });
+      const isSlider = el.type === 'range';
+      el.addEventListener('input', () => {
+        readUI(); scheduleRender();
+        if (isSlider) saveParamsSoon(); else saveParams();
+      });
       el.addEventListener('change', () => { readUI(); scheduleRender(); saveParams(); });
-    });
-    // 导出 / 视图设置也持久化
+    };
+    CONTROL_IDS.forEach(bindPersist);
+    // 导出 / 视图设置也持久化（不需要重绘，只入库）
     EXPORT_IDS.forEach((id) => {
       const el = $(id);
       if (!el) return;
+      const isSlider = el.type === 'range';
+      el.addEventListener('input', () => { readUI(); if (isSlider) saveParamsSoon(); else saveParams(); });
       el.addEventListener('change', () => { readUI(); saveParams(); });
-      el.addEventListener('input', () => { readUI(); saveParams(); });
     });
     // 行内容：行块里的控件在创建时就绑好了事件（makeRowEditor → onRowEdit）
     $('btnAddRow').onclick = () => addRow();
@@ -1062,8 +1000,9 @@
 
     // 队列
     $('btnClear').onclick = () => { clearQueue(); toast('已清空队列'); };
-    $('fitView').onchange = applyFit;
-    window.addEventListener('resize', () => applyFit());
+    // 「适应窗口」由 EXPORT_IDS 统一读写参数，这里只补一次重绘（缩略图/背板尺寸要重算）
+    $('fitView').onchange = () => scheduleRender();
+    window.addEventListener('resize', () => scheduleRender());
 
     // 时间段：应用到队列 / 重新随机 / 清空（清空 = 清空列表 + 取消全部分配）
     $('btnApplyRanges').onclick = () => applyRangesToQueue();
@@ -1081,6 +1020,16 @@
     // 导出
     $('btnExportOne').onclick = exportOne;
     $('btnExportZip').onclick = exportZip;
+
+    // 防伪码：一图一码且固定，这里给一个整批重掷的入口
+    $('btnRerollCodes').onclick = () => {
+      if (!state.items.length) { toast('队列为空，先导入图片'); return; }
+      rerollCodes();
+      scheduleRender();
+      toast(`已为 ${state.items.length} 张图片重新生成防伪码`);
+    };
+    // 位数改了 → 立刻整批按新长度重生成（否则要等每张图被重绘才更新）
+    $('codeLen').addEventListener('change', () => { rerollCodes(); scheduleRender(); });
 
     // 恢复默认
     $('btnReset').onclick = () => {
@@ -1128,8 +1077,8 @@
   syncQueue();
   bind();
   window.addEventListener('beforeunload', () => {
-    state.items.forEach((it) => URL.revokeObjectURL(it.url));
-    saveParams();                        // 关闭页面前落盘
+    state.items.forEach((it) => releaseUrl(it.url));
+    saveParams();                        // 关闭页面前落盘（内含清掉挂着的节流定时器）
   });
 
   // 方便调试

@@ -115,7 +115,10 @@
 ### 右下角防伪（固定锚定图片右下角）
 - **位置固定：无论水印表格放在哪个角，防伪标识始终贴图片右下角**（右边距 = 水平边距，底边距 = 垂直边距）
 - 使用你提供的 logo 图片（已在构建时以 base64 内嵌进 `index.html`，无需额外资源）
-- **防伪码每张图片导出时重新随机生成**（`crypto.getRandomValues`，字符集去掉了 `0/O/1/I/Z` 等易混字符）
+- **防伪码一图一码**（`crypto.getRandomValues`，字符集去掉了 `0/O/1/I/Z` 等易混字符）：
+  导入时给每张图生成一个码并**固定下来**，**预览里看到的码 = 导出的码 = 文件名里 `{code}` 的值**；
+  同一张图重复导出（或换格式再导）码不变。想换码：改「位数」会自动整批重生成，
+  或点卡片 6 里的「**重新随机防伪码**」整批换新（每张仍各不相同）
 - 防伪码与「防伪」标签均为**纯白加粗字体、无底纹**，只带一层很淡的黑色投影保证在浅色背景上仍可读
 - **默认 14 位**（与参考图一致），可在 4~24 位之间调整
 - **「防伪码字号」默认 128%**，滑块可调 40%~220%：滑块多大就是多大，
@@ -131,7 +134,8 @@
 - 导出格式 JPG / PNG / WebP + 质量可调
 - 可设置「长边最大像素」统一压缩尺寸
 - 文件名模板支持变量：`{name}` `{date}` `{time}` `{range}` `{shot}` `{code}` `{i}` `{w}` `{h}`
-- ZIP 由内置的零依赖打包器生成（STORE 方式，标准 ZIP，Windows/macOS 都能解压；文件名 UTF-8）
+- ZIP 由内置的零依赖打包器生成（STORE 方式，标准 ZIP，Windows/macOS 都能解压；文件名 UTF-8）；
+  条目数据（`canvas.toBlob` 的产物）**按 Blob 引用直接拼进压缩包**，CRC 用 4MB 分块流式计算
 
 ---
 
@@ -158,22 +162,28 @@ git add index.html && git commit -m "add watermark tool" && git push
 .
 ├── index.html          ← 构建产物：自包含单文件，部署/直接打开都用它
 ├── build.js            ← 构建脚本：把 src/ + logo 打包成 index.html
+├── package.json        ← 只管 npm run build / npm test（项目本身零依赖）
 ├── 右下角logo.png       ← 防伪 logo（源图，构建时内嵌为 base64）
 ├── 右下角-fnishi.png    ← 同上的备选文件（build.js 会优先用 右下角logo.png）
 ├── src/
 │   ├── index.html      ← 页面结构
 │   ├── styles.css      ← 界面样式
-│   ├── render.js       ← 水印渲染引擎（核心：版式计算 + Canvas 绘制）
-│   ├── zip.js          ← 零依赖 ZIP 打包器（CRC32 + STORE）
-│   ├── app.js          ← 界面逻辑：导入 / 参数 / 预览 / 批量导出
+│   ├── render.js       ← 水印渲染引擎（核心：版式计算 + Canvas 绘制；DEFAULTS 也在这里）
+│   ├── params.js       ← 控件声明表：id ↔ 参数名 ↔ 换算 ↔ 默认值（加参数只改这里 + HTML）
+│   ├── imaging.js      ← 缩略图生成 + 按需解码（LRU 只留最近 3 张位图）
+│   ├── naming.js       ← 文件名模板（{name}/{date}/{code}…，纯函数）
+│   ├── zip.js          ← 零依赖 ZIP 打包器（分块 CRC32 + STORE + Blob 引用拼接）
+│   ├── app.js          ← 界面逻辑：导入 / 预览 / 批量导出（编排层）
 │   └── logo-data.js    ← 由 build.js 生成的 logo data URL
-└── tools/              ← 开发期校验脚本（与线上功能无关）
+├── tools/              ← 开发期校验脚本（与线上功能无关）
+└── .github/workflows/  ← CI：npm test + 校验 index.html 与 src/ 同步
 ```
 
 改完 `src/` 后重新构建：
 
 ```bash
 node build.js        # 生成 index.html
+npm test             # 静态检查 + 5 套回归（无需 npm install，Node ≥18 即可）
 ```
 
 ---
@@ -184,7 +194,7 @@ node build.js        # 生成 index.html
 |---|---|---|---|
 | 位置 | `position` | `bottom-left` | **表格**所在角；防伪标识固定图片右下 |
 | 缩放 | `scale` | `1.0` | 水印整体缩放（相对短边比例） |
-| 水平/垂直边距 | `marginX` / `marginY` | `2.2%` / `2.26%` | 相对图片短边 |
+| 水平/垂直边距 | `marginX` / `marginY` | `2.2%` / `2.3%` | 相对图片短边（与滑块 step 一致） |
 | 不透明度 | `opacity` | `1.0` | |
 | 顶部标题 | `title` | 南京云之宝智算中心 | |
 | 标题 字号 | `titleFontScale` | `1.0` | = 参考字号 ×倍率（面板 40%~200%）|
@@ -279,10 +289,10 @@ node tools/analyze-ref.js                                     # 输出上表所�
 不需要浏览器即可跑（Node ≥ 18）：
 
 ```bash
-node tools/check.js        # 静态检查：DOM ID、参数名、资源引用、控件绑定方式、grid2 结构、CSS 类、文件编码
-node tools/test-panel.js   # 面板交互：就地编辑数值（含 grid2 右半边回归）、参数持久化、时间段随机分配、自定义日期、行增删、折叠卡（130 项）
-node tools/test-render.js  # 渲染 + 区间解析/随机取值/自定义日期/行高留白/字高解耦断言：170 项几何/颜色/文字用例
-node tools/test-zip.js     # ZIP 打包正确性（CRC32、UTF-8 文件名、EOCD）
+node tools/check.js        # 静态检查：DOM ID 与重复 ID、声明表↔DEFAULTS↔HTML 初值三方一致、资源引用、grid2 结构、CSS 类、编码
+node tools/test-panel.js   # 面板交互：就地编辑、参数持久化、时间段随机分配、自定义日期、行增删、折叠卡、删图不漂移、防伪码一图一码、缩略图/按需解码（154 项）
+node tools/test-render.js  # 渲染 + 区间解析/随机取值/自定义日期/行高留白/字高解耦/缩放一致性：175 项几何/颜色/文字用例
+node tools/test-zip.js     # ZIP 打包正确性（分块 CRC32、Blob 条目、UTF-8 文件名、EOCD、ZIP64 上限保护）
 node tools/verify.js       # 版式与参考图实测值对比
 node tools/analyze-ref.js  # 从参考图重新量取几何与配色（需要 _ref_black.jpg）
 node tools/preview-code-line.js  # 导出右下防伪块的 SVG 预览（目视校对 10/14/24 位码）
@@ -309,8 +319,11 @@ node build.js              # 重新构建 index.html
 
 - **超大图**：单边超过浏览器画布上限（Chrome 约 65535px，且总面积有限制）时，
   该图片会被跳过并提示，可设置「长边最大像素」后重试。
-- **ZIP 在内存中组装**：批量几十张大图时占用内存较高；ZIP 使用 STORE（不压缩），
-  因为 JPG/PNG 本身已压缩，再 deflate 收益极小、速度更慢。
+- **ZIP 在内存中组装**：条目按 Blob 引用拼接、CRC 分块计算，峰值内存 ≈ 输出体积（不再翻倍），
+  但几十张大图仍会同时占着内存。ZIP 使用 STORE（不压缩），因为 JPG/PNG 本身已压缩，再 deflate 收益极小；
+  超过 65535 个条目或 4GB 会**明确报错**，而不是产出打不开的包。
+- **队列内存**：缩略图栏用 96px 缩略图，全分辨率位图按需解码且只保留最近 3 张，
+  所以队列长度基本不影响内存；代价是切回较久之前的图会重新解码一次（几十毫秒）。
 - **EXIF** 只解析拍摄时间，不处理 GPS；没有 EXIF 时用文件修改时间。
 - 只在现代浏览器（Chrome / Edge / Firefox / Safari 新版本）测试；
   `crypto.getRandomValues` 不可用时自动退回 `Math.random`。
@@ -321,6 +334,11 @@ node build.js              # 重新构建 index.html
   保证不超出图片。实测：3:4 竖图字高 48px、3:2 横图 54px、400×400 小图约 11px。
   若想保住字高，可把表格移到左上/右上，或调小「缩放 / 垂直边距」。
 - 纯前端无法读取本地文件系统的保存路径，导出统一走浏览器的「下载」目录。
+- **预览按显示尺寸渲染**：画板（canvas）像素不再等于原图，而是按容器大小（再乘屏幕像素比）
+  计算，长边上限 3200px，用 `ctx.setTransform` 把坐标换回图片空间 —— 版式、位置、比例与导出完全一致，
+  但省掉了上千万像素的重复绘制（8192×8192 原本要 268MB 画布）。
+  因此：**关掉「适应窗口」时，若原图长边超过 3200px，预览是 1:1 但会被轻微放大显示**；
+  导出始终按原图（或「长边最大像素」）渲染，不受此影响。
 
 ---
 

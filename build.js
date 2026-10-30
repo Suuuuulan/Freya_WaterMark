@@ -27,9 +27,17 @@ const logoLiteral = JSON.stringify(logoDataUrl).replace(/<\//g, '<\\/');
 
 let html = read(path.join(src, 'index.html'));
 const css = read(path.join(src, 'styles.css'));
-const zipJs = read(path.join(src, 'zip.js'));
-const renderJs = read(path.join(src, 'render.js'));
-const appJs = read(path.join(src, 'app.js'));
+
+/* 脚本内联顺序 = 依赖顺序：底层工具 → 渲染引擎 → 参数/图片/命名 → 界面编排。
+ * 加新文件时只改这一张表（和 src/index.html 里的 <script src>）。 */
+const SCRIPTS = [
+  ['zip.js', 'zip.js · ZIP 打包'],
+  ['render.js', 'render.js · 渲染引擎'],
+  ['params.js', 'params.js · 控件声明表'],
+  ['imaging.js', 'imaging.js · 解码与缩略图'],
+  ['naming.js', 'naming.js · 文件名模板'],
+  ['app.js', 'app.js · 界面逻辑']
+];
 
 const banner = (name) => `\n<!-- ===================== ${name} ===================== -->\n`;
 
@@ -43,11 +51,11 @@ html = html.replace(
 
 // 2. 内联脚本（logo-data.js 由构建生成）
 const scripts = [
-  banner('zip.js · ZIP 打包') + '<script>\n' + zipJs.trim() + '\n</script>',
-  banner('logo-data.js · 内嵌防伪 logo') + '<script>\nwindow.FREYA_LOGO_DATA_URL = ' + logoLiteral + ';\n</script>',
-  banner('render.js · 渲染引擎') + '<script>\n' + renderJs.trim() + '\n</script>',
-  banner('app.js · 界面逻辑') + '<script>\n' + appJs.trim() + '\n</script>'
-].join('\n');
+  banner(SCRIPTS[0][1]) + '<script>\n' + read(path.join(src, SCRIPTS[0][0])).trim() + '\n</script>',
+  banner('logo-data.js · 内嵌防伪 logo') + '<script>\nwindow.FREYA_LOGO_DATA_URL = ' + logoLiteral + ';\n</script>'
+].concat(SCRIPTS.slice(1).map(([file, label]) =>
+  banner(label) + '<script>\n' + read(path.join(src, file)).trim() + '\n</script>'
+)).join('\n');
 
 html = html.replace(
   /<script src="zip\.js"><\/script>[\s\S]*?<script src="app\.js"><\/script>/,

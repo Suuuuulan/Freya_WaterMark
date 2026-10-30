@@ -144,10 +144,6 @@
         <button class="btn btn-mini" id="btnAddRow" type="button">＋ 添加一行</button>
         <span class="small muted" id="rowHint">默认两行：拍摄时间、地点</span>
       </div>
-      <div class="ctl">
-        <label>标签列宽 <output id="outLabelW">100%</output></label>
-        <input type="range" id="labelW" min="40" max="220" value="100">
-      </div>
       </div>
     </section>
 
@@ -304,11 +300,16 @@
         </div>
       </div>
       <div class="ctl">
-        <label>防伪码字号 <output id="outCodeSize">100%</output></label>
-        <input type="range" id="codeSize" min="40" max="220" value="100">
+        <label>防伪码字号 <output id="outCodeSize">128%</output></label>
+        <input type="range" id="codeSize" min="40" max="220" value="128">
+      </div>
+      <div class="ctl">
+        <button class="btn btn-mini" id="btnRerollCodes" type="button">重新随机防伪码</button>
+        <span class="small muted">整批换新码</span>
       </div>
       <div class="ctl small muted">
-        防伪码在每张图片导出时重新随机生成；预览显示的是「当前预览码」。
+        每张图在<strong>导入时生成一个固定防伪码</strong>，预览、导出、文件名里的 <code>{code}</code> 都是同一个值；
+        改位数或点上面的按钮才会换新码。
       </div>
       </div>
     </section>
@@ -384,6 +385,9 @@
 <script src="zip.js"></script>
 <script src="logo-data.js"></script>
 <script src="render.js"></script>
+<script src="params.js"></script>
+<script src="imaging.js"></script>
+<script src="naming.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -3,9 +3,18 @@
  * 只使用 STORE（不压缩）方式；JPEG/PNG 本身已压缩，再 deflate 收益极小。
  * 生成标准 ZIP：Local File Header + Central Directory + EOCD，
  * 文件名以 UTF-8 编码并置 bit 11 标志，Windows / macOS 均可正常解压。
+ *
+ * 内存策略：条目数据可以是 Blob，Blob **不会被转成 Uint8Array**：
+ *   1) CRC 用 slice 分块流式计算（每块 4MB，算完即丢）；
+ *   2) 原始 Blob 直接作为 `new Blob([...])` 的一部分（按引用拼接，不复制内容）。
+ * 以前把所有条目都 arrayBuffer() 成一个 Uint8Array 再拼 Blob，峰值是数据量的两倍：
+ * 50 张 8MB 的图 ≈ 400MB 数据 → 峰值接近 800MB。
  * ========================================================================= */
 (function (global) {
   'use strict';
+
+  const MAX_ENTRIES = 0xffff;          // 无 ZIP64 时条目数上限
+  const MAX_U32 = 0xffffffff;          // 无 ZIP64 时单个尺寸/总偏移上限
 
   /* ---------------- CRC-32 ---------------- */
   const CRC_TABLE = (() => {
@@ -21,6 +30,23 @@
   function crc32(bytes) {
     let c = 0xffffffff;
     for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+
+  /** 增量 CRC：c 传上一块的中间值（首块传 0xffffffff），返回新的中间值 */
+  function crcUpdate(c, bytes) {
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return c;
+  }
+
+  /** 分块读 Blob 算 CRC，全程只占一个 chunk 的内存 */
+  async function crc32OfBlob(blob) {
+    const CHUNK = 4 * 1024 * 1024;
+    let c = 0xffffffff;
+    for (let pos = 0; pos < blob.size; pos += CHUNK) {
+      const part = blob.slice(pos, Math.min(pos + CHUNK, blob.size));
+      c = crcUpdate(c, new Uint8Array(await part.arrayBuffer()));
+    }
     return (c ^ 0xffffffff) >>> 0;
   }
 
@@ -43,12 +69,18 @@
     throw new TypeError('unsupported entry data');
   }
 
+  const isBlob = (d) => typeof Blob !== 'undefined' && d instanceof Blob;
+
   /**
    * 创建 ZIP。
-   * @param {Array<{name:string, data:Uint8Array|ArrayBuffer|Blob}>} entries
+   * @param {Array<{name:string, data:Uint8Array|ArrayBuffer|Blob|string}>} entries
    * @returns {Promise<Blob>}
    */
   async function createZip(entries) {
+    if (entries.length > MAX_ENTRIES) {
+      throw new Error(`ZIP 条目过多（${entries.length} > ${MAX_ENTRIES}），请分批导出`);
+    }
+
     const chunks = [];
     const central = [];
     let offset = 0;
@@ -56,13 +88,15 @@
     const dt = dosDateTime(now);
 
     for (const e of entries) {
-      let data = e.data;
-      if (typeof Blob !== 'undefined' && data instanceof Blob) data = new Uint8Array(await data.arrayBuffer());
-      data = toBytes(data);
+      const blob = isBlob(e.data) ? e.data : null;
+      const bytes = blob ? null : toBytes(e.data);
 
       const nameBytes = new TextEncoder().encode(e.name);
-      const crc = crc32(data);
-      const size = data.length;
+      const size = blob ? blob.size : bytes.length;
+      if (size > MAX_U32) throw new Error(`单个文件超过 4GB（不支持 ZIP64）：${e.name}`);
+
+      // Blob 走分块 CRC（不落地整块内存）；其它类型直接算
+      const crc = blob ? await crc32OfBlob(blob) : crc32(bytes);
 
       const local = new Uint8Array(30 + nameBytes.length);
       let p = 0;
@@ -80,7 +114,8 @@
       put(u16(0));                 // extra length
       local.set(nameBytes, p);
 
-      chunks.push(local, data);
+      // 关键：Blob 原样作为 Blob 的一部分（按引用拼接，不复制内容）
+      chunks.push(local, blob || bytes);
 
       const cd = new Uint8Array(46 + nameBytes.length);
       p = 0;
@@ -106,6 +141,7 @@
       central.push(cd);
 
       offset += local.length + size;
+      if (offset > MAX_U32) throw new Error('压缩包超过 4GB（不支持 ZIP64），请减小「长边最大像素」或分批导出');
     }
 
     const cdSize = central.reduce((s, c) => s + c.length, 0);
@@ -125,7 +161,7 @@
     return new Blob([...chunks, ...central, eocd], { type: 'application/zip' });
   }
 
-  const api = { createZip, crc32 };
+  const api = { createZip, crc32, crc32OfBlob, crcUpdate, LIMITS: { MAX_ENTRIES, MAX_U32 } };
   global.FreyaZip = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

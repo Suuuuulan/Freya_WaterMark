@@ -1,0 +1,18 @@
+{
+  "name": "freya-watermark",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Freya 水印相机 —— 纯前端批量加水印（零依赖、单文件产物）",
+  "scripts": {
+    "build": "node build.js",
+    "check": "node tools/check.js",
+    "test": "node tools/check.js && node tools/test-zip.js && node tools/test-panel.js && node tools/test-render.js && node tools/verify.js",
+    "test:panel": "node tools/test-panel.js",
+    "test:render": "node tools/test-render.js",
+    "test:zip": "node tools/test-zip.js",
+    "verify": "node tools/verify.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

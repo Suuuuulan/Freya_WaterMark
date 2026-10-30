@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [18, 20]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # 项目零运行时依赖，不需要 npm install；只要 Node ≥18
+      - name: 静态检查 + 全部回归
+        run: npm test
+
+      - name: 构建产物与源码同步
+        run: |
+          node build.js
+          if [ -n "$(git status --porcelain index.html)" ]; then
+            echo "::error::index.html 与 src/ 不一致，请本地执行 node build.js 后一起提交"
+            git diff --stat index.html
+            exit 1
+          fi

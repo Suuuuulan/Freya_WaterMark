@@ -1,8 +1,9 @@
 /* check.js — 静态一致性检查：
- *   1. app.js 里用到的元素 ID 是否都存在于 index.html
- *   2. app.js 读写的参数名是否与 render.js DEFAULTS 一致
+ *   1. DOM ID：app.js 直接引用的 + 声明表里的，是否都存在于 index.html；ID 是否重复
+ *   2. 声明表 ↔ DEFAULTS ↔ HTML 控件初值 三方一致（默认值只允许有一处）
  *   3. index.html 是否只引用存在的脚本/样式
- * 用法: node _tools/check.js
+ *   4. 控件绑定方式 / grid2 结构 / CSS 类 / 编码
+ * 用法: node tools/check.js
  */
 const fs = require('fs');
 const path = require('path');
@@ -18,13 +19,33 @@ let errors = 0;
 const fail = (m) => { console.log('  ✗ ' + m); errors++; };
 const ok = (m) => console.log('  ✓ ' + m);
 
+/* 在 Node 里以「浏览器脚本」的方式加载 render.js + params.js，
+ * 直接拿到 DEFAULTS 与声明表（不复制一份，避免检查本身走偏）。 */
+const g = globalThis;
+new Function('module', 'global', 'window', 'document', 'Image', 'crypto', render)({ exports: {} }, g, g, {}, function () {}, {});
+new Function('module', 'global', 'window', 'document', 'Image', 'crypto', read('src/params.js'))({ exports: {} }, g, g, {}, function () {}, {});
+const DEFAULTS = g.FreyaWM && g.FreyaWM.DEFAULTS;
+const PR = g.FreyaParams;
+if (!DEFAULTS || !PR) {
+  console.log('  ✗ 无法加载 render.js / params.js 的导出');
+  process.exit(1);
+}
+
 /* ---------- 1. DOM ID ---------- */
 console.log('1) DOM 元素 ID');
 const htmlIds = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));
 const usedIds = new Set([...app.matchAll(/\$\('([^']+)'\)/g)].map((m) => m[1]));
+PR.ALL.forEach((e) => { usedIds.add(e.id); if (e.out) usedIds.add(e.out); });
 const missing = [...usedIds].filter((id) => !htmlIds.has(id));
-if (missing.length) fail('app.js 引用了不存在的 ID: ' + missing.join(', '));
-else ok(`app.js 引用的 ${usedIds.size} 个 ID 全部存在`);
+if (missing.length) fail('app.js / 声明表引用了不存在的 ID: ' + missing.join(', '));
+else ok(`${usedIds.size} 个 ID（含声明表里的控件与数值）全部存在`);
+
+/* 重复 ID：getElementById 只返回第一个，第二个控件会「点了没反应」且不报错。
+ * 曾有一次复制粘贴让「标签列宽」在两张卡里各出现一份，滑块彻底失效、测试全绿。 */
+const idList = [...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
+const dupIds = [...new Set(idList.filter((v, i) => idList.indexOf(v) !== i))];
+if (dupIds.length) fail('重复的 DOM id（后出现的那个控件会失效）: ' + dupIds.join(', '));
+else ok(`${idList.length} 个 DOM id 无重复`);
 
 const unused = [...htmlIds].filter((id) => !usedIds.has(id));
 if (unused.length) console.log('  · 未被 JS 引用的 ID（正常，可能是纯样式用）: ' + unused.join(', '));
@@ -43,15 +64,66 @@ console.log('\n1b) HTML 标签平衡');
   if (!unbal) ok('div / section / select / textarea 开合数量一致');
 }
 
-/* ---------- 2. 参数名 ---------- */
-console.log('\n2) 参数名一致性');
-const defBlock = render.slice(render.indexOf('const DEFAULTS = {'), render.indexOf('/* 比例常量'));
-const defKeys = new Set([...defBlock.matchAll(/^\s{4}([a-zA-Z][a-zA-Z0-9]*):/gm)].map((m) => m[1]));
-const appParams = new Set([...app.matchAll(/\bp\.([a-zA-Z][a-zA-Z0-9]*)\s*=/g)].map((m) => m[1]));
-const missingParams = [...appParams].filter((k) => !defKeys.has(k) && k !== 'rows');
-if (missingParams.length) fail('app.js 写入了 DEFAULTS 中不存在的参数: ' + missingParams.join(', '));
-else ok(`app.js 写入的 ${appParams.size} 个参数都在 DEFAULTS 中`);
+/* ---------- 2. 声明表 / DEFAULTS / HTML 三方一致 ---------- */
+console.log('\n2) 声明表 ↔ DEFAULTS ↔ HTML 初值');
 
+// 2a 声明里的参数名必须真实存在（防止拼错 key 静默失效）
+const defKeys = new Set(Object.keys(DEFAULTS));
+const ghostKeys = PR.ALL.filter((e) => !defKeys.has(e.key)).map((e) => e.id + '→' + e.key);
+if (ghostKeys.length) fail('声明表里的参数在 DEFAULTS 中不存在: ' + ghostKeys.join(', '));
+else ok(`${PR.ALL.length} 条声明的参数名都在 DEFAULTS 中`);
+
+// 2b 反方向：DEFAULTS 里每个参数都该有控件（以下几项由专门的 UI 处理）
+// position/rows/cardsClosed 由专门的 UI 处理；headerFontScale/bold 只有引擎默认值，面板不暴露
+const NO_CONTROL = new Set(['position', 'rows', 'cardsClosed', 'code', 'headerFontScale', 'bold']);
+const uncovered = [...defKeys].filter((k) => !NO_CONTROL.has(k) && !PR.ALL.some((e) => e.key === k));
+if (uncovered.length) fail('DEFAULTS 里有参数没有对应控件（新增参数忘了加声明）: ' + uncovered.join(', '));
+else ok('DEFAULTS 里的参数都有对应控件（position / rows / cardsClosed / code 另行处理）');
+
+// 2c HTML 里的参数控件都必须登记在表里（防止「加了控件但没接上」）
+const ctrls = new Map();
+for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
+  const idm = /\bid="([^"]+)"/.exec(m[2]);
+  if (idm) ctrls.set(idm[1], { tag: m[1], attrs: m[2] });
+}
+const NON_PARAM = new Set(['fileInput']);      // 隐藏的文件选择器，不是参数
+const declared = new Set(PR.ALL.map((e) => e.id));
+const undeclared = [...ctrls.keys()].filter((id) => !declared.has(id) && !NON_PARAM.has(id));
+if (undeclared.length) fail('HTML 里的控件没有登记到声明表（改了没生效）: ' + undeclared.join(', '));
+else ok(`${ctrls.size - NON_PARAM.size} 个参数控件全部登记在表里`);
+
+// 2d HTML 初值必须等于「DEFAULTS 经同一套换算后的值」——默认值只允许存在一处
+{
+  const bad = [];
+  PR.ALL.forEach((e) => {
+    const c = ctrls.get(e.id);
+    if (!c) return;
+    if (c.tag === 'textarea') return;              // 文本内容由 writeUI 填
+    const want = PR.toControl(e, DEFAULTS);
+    if (e.kind === 'bool') {
+      const has = /\bchecked\b/.test(c.attrs);
+      if (has !== !!want) bad.push(`${e.id}: checked=${has}，DEFAULTS 为 ${!!want}`);
+      return;
+    }
+    let got = null;
+    if (c.tag === 'select') {
+      const block = new RegExp(`<select[^>]*\\bid="${e.id}"[\\s\\S]*?</select>`).exec(html);
+      if (block) {
+        const sel = /<option[^>]*\bselected\b[^>]*\bvalue="([^"]*)"/.exec(block[0]);
+        const first = /<option[^>]*\bvalue="([^"]*)"/.exec(block[0]);
+        got = sel ? sel[1] : (first ? first[1] : null);
+      }
+    } else {
+      const vm = /\bvalue="([^"]*)"/.exec(c.attrs);
+      got = vm ? vm[1] : null;
+    }
+    if (got !== String(want)) bad.push(`${e.id}: HTML=${JSON.stringify(got)}，应为 ${JSON.stringify(String(want))}`);
+  });
+  if (bad.length) fail('HTML 控件初值与 DEFAULTS 不一致（改了一处忘了另一处）:\n      ' + bad.join('\n      '));
+  else ok('每个控件的 HTML 初值都等于 DEFAULTS 换算值');
+}
+
+// 2e render 只读取 DEFAULTS 里有的参数
 const renderR = new Set([...render.matchAll(/\bp\.([a-zA-Z][a-zA-Z0-9]*)/g)].map((m) => m[1]));
 const notDefault = [...renderR].filter((k) => !defKeys.has(k) && !['rows', 'code'].includes(k));
 if (notDefault.length) console.log('  · render 中读取但不在 DEFAULTS（运行时注入）: ' + notDefault.join(', '));

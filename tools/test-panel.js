@@ -4,8 +4,9 @@
  * 用法: node tools/test-panel.js
  */
 const fs = require('fs');
-const root = 'D:/Work/Freya_WaterMark/';
-const html = fs.readFileSync(root + 'index.html', 'utf8');
+const path = require('path');
+const root = path.resolve(__dirname, '..');
+const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
 const outs = [...html.matchAll(/<output id="([^"]+)"[^>]*>([^<]*)<\/output>/g)].map((m) => ({ id: m[1], text: m[2] }));
@@ -33,7 +34,10 @@ function mkEl(tag, id) {
     },
     addEventListener(t, f) { (L[t] = L[t] || []).push(f); },
     dispatch(t, ev) {
-      const e = Object.assign({ target: el, preventDefault() {}, key: '' }, ev || {});
+      const e = Object.assign({
+        target: el, key: '',
+        preventDefault() {}, stopPropagation() {}
+      }, ev || {});
       (L[t] || []).forEach((f) => f(e));
       if (t === 'click' && el.onclick) el.onclick(e);
     },
@@ -42,7 +46,7 @@ function mkEl(tag, id) {
       const type = ev && ev.type;
       if (type) el.dispatch(type, ev);
     },
-    appendChild(c) { c.parentNode = el; el.children.push(c); return c; },
+    appendChild(c) { c.parentNode = el; c._everAttached = true; el.children.push(c); return c; },
     /** innerHTML = '' 时必须清空 children（真实 DOM 行为），否则重复渲染后会读到旧行 */
     get innerHTML() { return el._html || ''; },
     set innerHTML(v) { el._html = String(v); el.children.length = 0; },
@@ -53,7 +57,7 @@ function mkEl(tag, id) {
       const p = el.parentNode;
       if (!p) return;
       const i = p.children.indexOf(el);
-      if (i >= 0) { p.children[i] = node; node.parentNode = p; el.parentNode = null; }
+      if (i >= 0) { p.children[i] = node; node.parentNode = p; node._everAttached = true; el.parentNode = null; }
     },
     remove() { const p = el.parentNode; if (!p) return; const i = p.children.indexOf(el); if (i >= 0) p.children.splice(i, 1); },
     click() { el.dispatch('click'); },
@@ -137,6 +141,7 @@ function defineClassSync(el) {
 let els = {};          // 最近一次 boot 的元素，供 ①～⑦ 的断言工具用
 let ctls = [];
 let win = null;
+let docOf = null;      // 最近一次 boot 的 document 桩（用真实 DOM 语义查节点）
 
 /* 控件结构**直接从产物 HTML 解析**，不再手写映射表
  * （手写表会和真实 HTML 走偏：之前正是靠「手写的扁平结构」漏掉了
@@ -219,7 +224,14 @@ function bootOnce() {
   });
   const doc = {
     body: mkEl('body'),
-    getElementById: (id) => myEls[id] || (myEls[id] = mkEl('div', id)),
+    getElementById: (id) => {
+      const el = myEls[id];
+      // 真实 DOM 里，已经被 replaceWith 换下来（脱离文档）的节点是查不到的。
+      // 就地编辑正是「output 临时换成 input」，不模拟这层语义，
+      // 「回显时 getElementById 拿到 null、数字不更新」这类 bug 测试就看不见。
+      if (el && el._everAttached && !el.parentNode) return null;
+      return el || (myEls[id] = mkEl('div', id));
+    },
     createElement: (t) => mkEl(t),
     querySelectorAll: (sel) => (sel === 'output' ? myCtls.map((c) => c.out)
       : sel === 'input[type="range"]' ? myCtls.map((c) => c.slider)
@@ -243,7 +255,7 @@ function bootOnce() {
       });
     },
     function (t) { this.type = t; }, setTimeout, urlStub);
-  win = myWin;
+  win = myWin; docOf = doc;
   els = myEls; ctls = myCtls;      // 供 ①～⑦ 的断言工具用
   return { win: myWin, els: myEls, ctls: myCtls, doc, cards: cardNodes, btns: { now: nowBtns, filetime: fileBtns } };
 }
@@ -288,8 +300,25 @@ console.log('\n② 键入数值 → 滑块与参数同步（标题字号 100% �
   t('output 文本被 readUI 回填', c.out.textContent === '150%', 'text=' + c.out.textContent);
 }
 
-console.log('\n③ 越界值自动夹取（标题字号 max=200，键入 9999）');
+/* 真实 DOM 语义回归：编辑期间 <output> 是被 replaceWith 换下来的**脱离文档节点**，
+ * getElementById 查不到；所以 commit 必须「先换回 output、再触发 input/change」。
+ * 顺序反了就会出现「滑块动了、数字还是旧的」，而 DOM 桩若不模拟脱离文档就永远测不出来。 */
+console.log('\n②b 编辑期间 output 脱离文档 → 提交顺序必须正确');
 {
+  const c = pick('outTitleLineGap');
+  c.out.dispatch('click');
+  t('编辑期间按 id 查不到 output（模拟真实 DOM）', docOf.getElementById('outTitleLineGap') === null);
+  const inp = c.cell.querySelector('input.ctl-edit');
+  inp.value = '0.3';
+  inp.dispatch('keydown', { key: 'Enter' });
+  const back = docOf.getElementById('outTitleLineGap');
+  t('提交后 output 回到文档', !!back);
+  t('且数字已按新值回填（0.30）', back && back.textContent === '0.30', back ? back.textContent : 'null');
+  t('参数同步为 0.3', Math.abs(win.__freya.params.titleLineGapRatio - 0.3) < 1e-9,
+    'got=' + win.__freya.params.titleLineGapRatio);
+}
+
+console.log('\n③ 越界值自动夹取（标题字号 max=200，键入 9999）');{
   edit('outTitleScale', '9999');
   const c = pick('outTitleScale');
   t('滑块被夹到 200', c.slider.value === '200', 'slider=' + c.slider.value);
@@ -736,6 +765,136 @@ const NAMES = ['IMG_0001.jpg', 'IMG_0002.jpg', 'IMG_0003.jpg', 'IMG_0004.jpg'];
     t('展开后从存档里移除',
       JSON.parse(store['freya-watermark.params.v1']).cardsClosed.join(',') === '',
       JSON.stringify(JSON.parse(store['freya-watermark.params.v1']).cardsClosed));
+  }
+
+  console.log('\n㉓ 删除队列里的图片：索引不漂移 / 预览背板不按原图尺寸建');
+  {
+    delete store['freya-watermark.params.v1'];
+    const b8 = bootOnce();
+    const E8 = b8.els;
+    const S8 = b8.win.__freya;
+    const base = new Date(2026, 7, 19, 7, 15).getTime();
+    E8.fileInput.files = ['A.jpg', 'B.jpg', 'C.jpg'].map((n, i) => mkFile(n, base + i * 1000));
+    E8.fileInput.onchange({ target: E8.fileInput });
+    await flush(200);
+    t('导入 3 张', S8.items.length === 3, 'items=' + S8.items.length);
+
+    const thumbDel = (i) => E8.thumbs.children[i].children[1].dispatch('click');
+    E8.thumbs.children[2].dispatch('click');          // 选中第 3 张
+    t('点缩略图选中第 3 张', S8.active === 2 && S8.items[2].name === 'C.jpg',
+      'active=' + S8.active + ' name=' + (S8.items[S8.active] || {}).name);
+
+    thumbDel(0);                                     // 删掉排在当前图**之前**的那张
+    t('删除后队列剩 2 张', S8.items.length === 2, 'items=' + S8.items.length);
+    t('当前图仍是 C.jpg（以前会漂移到 B.jpg）',
+      S8.active === 1 && S8.items[S8.active].name === 'C.jpg',
+      'active=' + S8.active + ' name=' + (S8.items[S8.active] || {}).name);
+
+    thumbDel(1);                                     // 删当前图本身 → 退到剩下那张
+    t('删掉当前图后退到相邻一张', S8.items.length === 1 && S8.active === 0 && S8.items[0].name === 'B.jpg',
+      'active=' + S8.active + ' name=' + (S8.items[0] || {}).name);
+
+    await flush(150);
+    const pv = E8.preview;
+    const it = S8.items[S8.active];
+    t('预览背板不再等于原图尺寸', pv.width < it.w && pv.height < it.h,
+      pv.width + '×' + pv.height + ' vs 原图 ' + it.w + '×' + it.h);
+    t('背板长边不超过上限 3200', Math.max(pv.width, pv.height) <= 3200,
+      Math.max(pv.width, pv.height));
+    t('背板保持原图宽高比', Math.abs(pv.width / pv.height - it.w / it.h) < 0.06,
+      (pv.width / pv.height).toFixed(3) + ' vs ' + (it.w / it.h).toFixed(3));
+    t('CSS 显示宽度按容器算出（与背板解耦）', /^\d+px$/.test(pv.style.width), pv.style.width);
+  }
+
+  console.log('\n㉔ 防伪码：一图一码，预览 / 导出 / 文件名 {code} 是同一个值');
+  {
+    delete store['freya-watermark.params.v1'];
+    const b9 = bootOnce();
+    const E9 = b9.els;
+    const S9 = b9.win.__freya;
+    const anchors = [];
+    b9.doc.createElement = (tag) => {
+      const el = mkEl(tag);
+      if (String(tag).toLowerCase() === 'a') anchors.push(el);
+      return el;
+    };
+    const base = new Date(2026, 7, 19, 7, 15).getTime();
+    E9.fileInput.files = NAMES.map((n, i) => mkFile(n, base + i * 1000));
+    E9.fileInput.onchange({ target: E9.fileInput });
+    await flush(200);
+
+    const codes = () => S9.items.map((it) => it.code);
+    t('每张图各有一个独立防伪码', S9.items.length === 4 && new Set(codes()).size === 4, codes().join(','));
+    t('码长 = 面板位数（14）', codes().every((c) => c.length === 14), codes().map((c) => c.length).join(','));
+
+    drawn.length = 0;
+    E9.thumbs.children[0].dispatch('click');
+    await flush(150);
+    t('预览画在图上的是这张图自己的码', drawnText().includes(S9.items[0].code),
+      'code=' + S9.items[0].code + ' drawn=' + drawnText().slice(0, 60));
+
+    const first = S9.items[0].code;
+    setText(E9.nameTpl, '{code}_{name}');
+    anchors.length = 0;
+    E9.btnExportOne.dispatch('click');
+    await flush(120);
+    t('导出文件名里的 {code} = 预览里看到的码',
+      anchors.length === 1 && anchors[0].download === first + '_IMG_0001.jpg',
+      anchors.map((a) => a.download).join(',') || '未导出');
+
+    anchors.length = 0;
+    E9.btnExportOne.dispatch('click');
+    await flush(120);
+    t('同一张图重复导出，码不变', anchors.length === 1 && anchors[0].download === first + '_IMG_0001.jpg',
+      anchors.map((a) => a.download).join(','));
+
+    const before = codes().join(',');
+    E9.scale.value = '120'; E9.scale.dispatch('input');
+    t('改其它参数不会换码', codes().join(',') === before, codes().join(','));
+
+    E9.codeLen.value = '8'; E9.codeLen.dispatch('change');
+    t('改位数 → 全队列按新长度重生成', codes().every((c) => c.length === 8), codes().map((c) => c.length).join(','));
+
+    const beforeRoll = codes().join(',');
+    E9.btnRerollCodes.dispatch('click');
+    t('「重新随机防伪码」整批换新码', codes().join(',') !== beforeRoll && codes().every((c) => c.length === 8),
+      beforeRoll + ' → ' + codes().join(','));
+  }
+
+  console.log('\n㉕ 队列内存：缩略图与按需解码');
+  {
+    delete store['freya-watermark.params.v1'];
+    const b10 = bootOnce();
+    const E10 = b10.els;
+    const S10 = b10.win.__freya;
+    const base = new Date(2026, 7, 19, 7, 15).getTime();
+    const names5 = ['P1.jpg', 'P2.jpg', 'P3.jpg', 'P4.jpg', 'P5.jpg'];
+    E10.fileInput.files = names5.map((n, i) => mkFile(n, base + i * 1000));
+    E10.fileInput.onchange({ target: E10.fileInput });
+    await flush(250);
+
+    t('导入 5 张', S10.items.length === 5, 'items=' + S10.items.length);
+    t('导入后只有当前图解码，其余不占位图',
+      S10.items.filter((it) => it.img).length <= 1 &&
+      S10.items.every((it, i) => i === S10.active || !it.img),
+      '非当前图仍有位图: ' + S10.items.filter((it, i) => i !== S10.active && it.img).length + ' 张');
+    t('每张都生成了缩略图 dataURL',
+      S10.items.every((it) => typeof it.thumb === 'string' && it.thumb.indexOf('data:') === 0),
+      JSON.stringify(S10.items.map((it) => (it.thumb ? it.thumb.slice(0, 16) : ''))));
+    t('队列缩略图 <img> 用的是缩略图而不是原图 URL',
+      E10.thumbs.children.every((d) => d.children[0].src === S10.items[E10.thumbs.children.indexOf(d)].thumb),
+      E10.thumbs.children.map((d) => String(d.children[0].src).slice(0, 12)).join(','));
+
+    // 逐个切图：每次都真正解码一次（等渲染完成），最后只应保留最近 3 张
+    for (let i = 0; i < 5; i++) {
+      E10.thumbs.children[i].dispatch('click');
+      await flush(120);
+    }
+    const alive = S10.items.filter((it) => it.img).length;
+    t('切换 5 张后只保留最近 3 张位图（LRU）', alive <= 3, '仍存活 ' + alive + ' 张');
+    t('当前图一定已解码（预览要用）', !!S10.items[S10.active].img, 'active=' + S10.active);
+    t('切回来仍能正常预览（按需重新解码）', S10.items[S10.active].img.naturalWidth === 295,
+      'w=' + (S10.items[S10.active].img || {}).naturalWidth);
   }
 
   console.log('\n' + (bad ? '✗ ' + bad + ' 项失败 / 共 ' + (ok + bad) : '✓ 全部通过（' + ok + ' 项）'));

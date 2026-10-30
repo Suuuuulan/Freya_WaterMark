@@ -402,6 +402,39 @@ setTimeout(() => {
       JSON.stringify(WM.DEFAULTS.rows.map((r) => r.label)));
   }
 
+  console.log('\n3.8) 表格被等比缩小（方形小图放不下）时，折行标题的行距同步缩');
+  {
+    const longTitle = '南京云之宝智算中心' + '某某某某某某某某某某某某某某某某某某某某某某某某';
+    const rows6 = [];
+    for (let i = 0; i < 6; i++) {
+      rows6.push({ on: true, label: '标签' + (i + 1) + ':', value: '值内容一二三四五六七八九十' });
+    }
+    const pK = Object.assign({}, p, {
+      title: longTitle, titleLS: 0, titleLineGapRatio: 0.5, bodyFontScale: 3
+    });
+    const rawH = r.layout(pK, 400, rows6).h;
+    const cK = makeRecorder();
+    const resK = r.draw(cK, pK, 400, 400, 400, rows6);
+    const tK = resK.metrics;
+    const ysK = [...new Set(cK.ops
+      .filter((o) => o[0] === 'fillText' && near(fontPx(o[5]), tK.fH, 2)
+        // 只看顶栏区域：防伪码行的字身偶尔与缩小后的标题字高接近，不排除会串进来
+        && o[3] <= resK.y + tK.headerH)
+      .map((o) => Math.round(o[3] * 10) / 10))].sort((a, b) => a - b);
+    const pitchK = ysK.length >= 2 ? ysK[1] - ysK[0] : 0;
+    check('前提：未缩放时确实放不下（触发等比缩小）', rawH > 400 * 0.95,
+      '未缩放 h=' + rawH.toFixed(1) + ' / 画布 400');
+    check('前提：缩小后确实变矮了', tK.h < rawH * 0.99,
+      '缩放后 h=' + tK.h.toFixed(1) + ' vs 未缩放 ' + rawH.toFixed(1));
+    check('前提：标题确实折行', ysK.length >= 2, 'ys=' + ysK.join(','));
+    check('缩放后行距 = 缩放后的行高 + 缩放后的行间距',
+      near(pitchK, tK.titleLineH + tK.fH * 0.5, 1),
+      'pitch=' + pitchK.toFixed(1) + ' 期望=' + (tK.titleLineH + tK.fH * 0.5).toFixed(1));
+    check('缩放后标题仍落在顶栏内（末行基线不越界）',
+      ysK.length >= 2 && (ysK[ysK.length - 1] - resK.y) < tK.headerH,
+      'lastY-y=' + (ysK[ysK.length - 1] - resK.y).toFixed(1) + ' headerH=' + tK.headerH.toFixed(1));
+  }
+
   const arcs = ctx.ops.filter((o) => o[0] === 'arc');
   check('绘制了圆点', arcs.length === 1, 'got ' + arcs.length);
   if (arcs.length) {

@@ -1,6 +1,10 @@
 # 开发期临时文件（参考图与量取数据，不进版本库）
 _ref_black.jpg
 tools/_data/
+tools/test-out.zip
+
+# 工具缓存 / 本地记忆
+.workbuddy/
 
 # 系统 / 编辑器
 Thumbs.db
@@ -9,3 +13,4 @@ desktop.ini
 .vscode/
 .idea/
 *.log
+node_modules/

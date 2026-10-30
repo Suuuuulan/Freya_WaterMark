@@ -19,7 +19,7 @@
     position: 'bottom-left',
     scale: 1.0,
     marginX: 2.2,
-    marginY: 2.26,
+    marginY: 2.3,   // 0.1 步进的滑块会夹到 2.3，默认值与控件保持一致（≈40.8px @1773）
     opacity: 1.0,
 
     showTable: true,
@@ -546,6 +546,10 @@
       t.padTop *= k; t.radius *= k;
       t.fH *= k; t.titleLSpx *= k; t.titleLineH *= k;
       t.headerH *= k; t.dotD *= k; t.dotX *= k;
+      // 折行标题的行距也必须跟着缩：绘制用的是 titleLinePitch，
+      // 漏掉它会让「标题折行 + 表格被压缩」时两行标题按未缩放的间距排布、跑出顶栏
+      t.titleLineGap *= k;
+      t.titleLinePitch = t.titleLineH + t.titleLineGap;
       t.rows.forEach((r) => { r.h *= k; });
       t.h *= k;
       t.bodyTop *= k;
