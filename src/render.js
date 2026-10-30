@@ -23,30 +23,30 @@
     opacity: 1.0,
 
     showTable: true,
-    title: '南京云之宝智算中心',
-    titleLS: 5,             // 标题字距（**绝对像素**；放不下时自动继续收紧）
-    titleFontScale: 1.0,    // 标题字号 = 跟随后的字号 ×1.0（与行文字同高）
-    titleHeightScale: 1.0,  // 标题字形纵向拉伸：>1 变高（以行中心为锚点，居中不受影响）
+    title: 'XXX项目',
+    titleLS: 0,             // 标题字距（**绝对像素**；放不下时自动继续收紧）
+    titleFontScale: 1.1,    // 标题字号 = 跟随后的字号 ×1.0（与行文字同高）
+    titleHeightScale: 1.1,  // 标题字形纵向拉伸：>1 变高（以行中心为锚点，居中不受影响）
     titleLineHeightRatio: 1.5, // 标题行高 = 字号 ×1.5（与字号解耦：字号小而行高更高）
     titleLineGapRatio: 0.0, // 标题行间距：折行时两行之间再留 字号 ×此值（单行标题无效果）
-    headerPadRatio: 1.8,    // 顶栏高 = 标题行高 ×1.8（上下留白按文字高度算）
+    headerPadRatio: 1.4,    // 顶栏高 = 标题行高 ×1.8（上下留白按文字高度算）
     bodyLS: 0.0,
-    labelLS: 0.185,         // 标签内字间距（em）——参照水印相机 APP 实测 ≈0.185em
+    labelLS: 0.20,         // 标签内字间距（em）——参照水印相机 APP 实测 ≈0.185em
     valueGapRatio: 0.20,    // 「标签」到「值」的间距 = 字号 ×倍率（APP 实测 ≈0.20em）
     labelW: 1.0,
     bodyFontScale: 1.2,     // 正文字号 = 参考字高 ×1.2（面板「字号」）
-    bodyHeightScale: 1.0,   // 正文字高：只把字形纵向拉高（面板「字高」，以行中线为锚点）
+    bodyHeightScale: 1.1,   // 正文字高：只把字形纵向拉高（面板「字高」，以行中线为锚点）
     headerFontScale: 1.2,   // 标题字号（不再跟随正文字号；面板「字号」再乘上去）
-    lineHeightRatio: 1.35,  // 行高 = 字号 ×1.35（按字距收紧后的紧凑值，可调）
-    rowGapRatio: 0.18,      // 行间距 = 字号 ×0.18（可调，配合行间分隔线）
+    lineHeightRatio: 1.5,  // 行高 = 字号 ×1.35（按字距收紧后的紧凑值，可调）
+    rowGapRatio: 0.2,      // 行间距 = 字号 ×0.18（可调，配合行间分隔线）
     rowSepH: 1,             // 行间分隔线粗细（px，固定不随图片缩放；0 = 不画也不占位置）
     rowSepAlpha: 0.18,      // 行间分隔线浓度（黑色 alpha）
-    bodyPadTopRatio: 1.0,   // 白色区域「顶部留白」倍率（1.0 = 参考图实测 0.0147×短边）
-    bodyPadBottomRatio: 1.0,// 白色区域「底部留白」倍率（1.0 = 参考图实测 0.0226×短边）
+    bodyPadTopRatio: 0.4,   // 白色区域「顶部留白」倍率（1.0 = 参考图实测 0.0147×短边）
+    bodyPadBottomRatio: 0.4,// 白色区域「底部留白」倍率（1.0 = 参考图实测 0.0226×短边）
 
     rows: [
       { on: true, label: '拍摄时间:', type: 'datetime', text: '2026.08.19 10:59' },
-      { on: true, label: '地　　点:', type: 'text', text: '南京市江宁区·南京绿地国际花都2期' }
+      { on: true, label: '地　　点:', type: 'text', text: 'XX市XX区·XXXXXXXXXX2期' }
     ],
 
     accent: '#15a7fa',

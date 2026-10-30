@@ -162,6 +162,7 @@ git add index.html && git commit -m "add watermark tool" && git push
 .
 ├── index.html          ← 构建产物：自包含单文件，部署/直接打开都用它
 ├── build.js            ← 构建脚本：把 src/ + logo 打包成 index.html
+├── 一键构建.bat         ← Windows 双击构建（= node build.js + 自检），构建完按任意键关闭
 ├── package.json        ← 只管 npm run build / npm test（项目本身零依赖）
 ├── 右下角logo.png       ← 防伪 logo（源图，构建时内嵌为 base64）
 ├── 右下角-fnishi.png    ← 同上的备选文件（build.js 会优先用 右下角logo.png）
@@ -185,6 +186,29 @@ git add index.html && git commit -m "add watermark tool" && git push
 node build.js        # 生成 index.html
 npm test             # 静态检查 + 5 套回归（无需 npm install，Node ≥18 即可）
 ```
+
+Windows 上也可以直接**双击 `一键构建.bat`**（等价于上面两条，构建完停住等你看结果）。
+
+### 改默认参数：只改一处
+
+**所有默认值都在 `src/render.js` 的 `DEFAULTS` 里**（第 18–83 行）。改完直接构建即可：
+
+```js
+// src/render.js
+position: 'bottom-right',   // 默认位置
+scale: 1.2,                 // 默认缩放
+bodyFontScale: 1.5,         // 默认正文字号
+```
+
+```bash
+node build.js     # 或双击 一键构建.bat
+```
+
+`build.js` 会按 `src/params.js` 的声明表把 `src/index.html` 里对应控件的
+`value=""` / `checked` / 面板数字初值**一起同步**（换算规则与运行时回显同一套），
+所以不需要再手改 HTML；`check.js` 的三方一致性断言也会保持通过。
+
+> 提醒：浏览器里存过的旧参数（`localStorage`）会盖住新默认值——点面板上的「恢复默认」即可看到改动。
 
 ---
 

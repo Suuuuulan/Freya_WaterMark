@@ -155,16 +155,25 @@ setTimeout(() => {
   const isTitleFont = (f) => fontPx(f) >= fH - 2 && fontPx(f) < fH + 2;
   const isBodyFont = (f) => fontPx(f) >= fB - 2 && fontPx(f) < fB + 2;
   const title = texts.filter((o) => isTitleFont(o[5]));
-  check('标题 9 个字被绘制', title.length === 9, 'got ' + title.length + ' → ' + title.map((o) => o[1]).join(''));
+  /* 断言不写死「几个字 / 多少像素」：默认标题是可以被用户改的，
+   * 期望值一律由「当前标题 + 当前字号」推出来，改默认值不会把用例打红。 */
+  const titleChars = Array.from(p.title || '');
+  check('标题逐字绘制（字数 = 当前标题字数）', title.length === titleChars.length,
+    'got ' + title.length + ' 期望 ' + titleChars.length + ' → ' + title.map((o) => o[1]).join(''));
   const titleMinX = title.length ? Math.min(...title.map((o) => o[2])) : NaN;
   const titleMaxX = title.length ? Math.max(...title.map((o) => o[2])) : NaN;
-  const titleW = titleMaxX - titleMinX + fH;
+  // 用同一个 measureText 口径算期望宽度：填字完成时最后一笔的起点 + 最后一字的宽度
+  const titleMeasurer = makeRecorder();
+  titleMeasurer.font = 'bold ' + fH + 'px ' + WM.DEFAULTS.fontFamily;
+  const lastCharW = titleMeasurer.measureText(titleChars[titleChars.length - 1] || '').width;
+  const expectTitleW = WM.measureLS(titleMeasurer, p.title, res.metrics.titleLSpx);
+  const titleW = titleMaxX - titleMinX + lastCharW;
   // 用标题中心对齐检查（避免依赖具体字体的字宽）；期望值由引擎的 titleCenterX 给出
   const expectTitleCx = res.x + res.metrics.titleCenterX;
-  check('标题中心 = 引擎 titleCenterX', near((titleMinX + titleMaxX + fH) / 2, expectTitleCx, 12),
-    'got ' + ((titleMinX + titleMaxX + fH) / 2).toFixed(1) + ' 期望 ' + expectTitleCx.toFixed(1));
-  check('标题宽度随字号放大（含字距）', near(titleW, 515, 70),
-    'got ' + titleW.toFixed(1) + ' 期望 ≈515');
+  check('标题中心 = 引擎 titleCenterX', near((titleMinX + titleMaxX + lastCharW) / 2, expectTitleCx, 12),
+    'got ' + ((titleMinX + titleMaxX + lastCharW) / 2).toFixed(1) + ' 期望 ' + expectTitleCx.toFixed(1));
+  check('标题宽度 = 各字宽之和 + 字距', near(titleW, expectTitleW, 2.5),
+    'got ' + titleW.toFixed(1) + ' 期望 ' + expectTitleW.toFixed(1));
   // 字距：绝对值 8px（不随字号放大而变宽），且标题总宽必须装得进表格
   check('标题字距为绝对值 px（不随字号等比放大）', near(res.metrics.titleLSpx, WM.DEFAULTS.titleLS, 0.5),
     'titleLSpx=' + res.metrics.titleLSpx.toFixed(2) + ' 期望 ' + WM.DEFAULTS.titleLS);
@@ -193,7 +202,8 @@ setTimeout(() => {
     near(res.metrics.fH, BASE * WM.M.headerFont * WM.DEFAULTS.bodyFontScale * WM.DEFAULTS.titleFontScale, 0.6),
     'fH=' + res.metrics.fH.toFixed(1));
   const whiteTitles = title.filter((o) => o[4] === '#ffffff');
-  check('标题为白色', whiteTitles.length === 9, 'got ' + whiteTitles.length + ' fillStyle=' + (title[0] && title[0][4]));
+  check('标题为白色', whiteTitles.length === titleChars.length,
+    'got ' + whiteTitles.length + ' fillStyle=' + (title[0] && title[0][4]));
   check('标题与正文均为加粗', title.length > 0 && title.every((o) => /^bold\s/.test(o[5])),
     'got ' + JSON.stringify([...new Set(title.map((o) => o[5]))].slice(0, 2)));
 

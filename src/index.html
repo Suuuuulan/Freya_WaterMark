@@ -100,17 +100,17 @@
       <div class="card-body">
       <div class="ctl">
         <label>顶部标题</label>
-        <input type="text" id="title" value="南京云之宝智算中心" placeholder="例如：某某公司项目部">
+        <input type="text" id="title" value="XXX项目" placeholder="例如：某某公司项目部">
       </div>
       <div class="grp">标题文字属性</div>
       <div class="ctl grid2">
         <div>
-          <label>字号 <output id="outTitleScale">100%</output></label>
-          <input type="range" id="titleFontScale" min="40" max="200" value="100">
+          <label>字号 <output id="outTitleScale">110%</output></label>
+          <input type="range" id="titleFontScale" min="40" max="200" value="110">
         </div>
         <div>
-          <label>字高 <output id="outTitleHeight">100%</output></label>
-          <input type="range" id="titleHeightScale" min="50" max="200" value="100">
+          <label>字高 <output id="outTitleHeight">110%</output></label>
+          <input type="range" id="titleHeightScale" min="50" max="200" value="110">
         </div>
       </div>
       <div class="ctl grid2">
@@ -125,12 +125,12 @@
       </div>
       <div class="ctl grid2">
         <div>
-          <label>字间距 <output id="outTitleLS">5</output>px</label>
-          <input type="range" id="titleLS" min="0" max="40" step="1" value="5">
+          <label>字间距 <output id="outTitleLS">0.00</output>px</label>
+          <input type="range" id="titleLS" min="0" max="40" step="1" value="0">
         </div>
         <div>
-          <label>顶栏高度 <output id="outHeaderPad">180%</output></label>
-          <input type="range" id="headerPadRatio" min="120" max="320" value="180">
+          <label>顶栏高度 <output id="outHeaderPad">140%</output></label>
+          <input type="range" id="headerPadRatio" min="120" max="320" value="140">
         </div>
       </div>
       <div class="small muted" style="margin:-4px 0 10px">
@@ -157,18 +157,18 @@
           <input type="range" id="bodyFontScale" min="40" max="250" value="120">
         </div>
         <div>
-          <label>字高 <output id="outBodyHeight">100%</output></label>
-          <input type="range" id="bodyHeightScale" min="50" max="200" value="100">
+          <label>字高 <output id="outBodyHeight">110%</output></label>
+          <input type="range" id="bodyHeightScale" min="50" max="200" value="110">
         </div>
       </div>
       <div class="ctl grid2">
         <div>
-          <label>行高 <output id="outLineH">1.35</output></label>
-          <input type="range" id="lineHeightRatio" min="1" max="3" step="0.05" value="1.35">
+          <label>行高 <output id="outLineH">1.50</output></label>
+          <input type="range" id="lineHeightRatio" min="1" max="3" step="0.05" value="1.5">
         </div>
         <div>
-          <label>行间距 <output id="outRowGap">0.18</output></label>
-          <input type="range" id="rowGapRatio" min="0" max="1.2" step="0.02" value="0.18">
+          <label>行间距 <output id="outRowGap">0.20</output></label>
+          <input type="range" id="rowGapRatio" min="0" max="1.2" step="0.02" value="0.2">
         </div>
       </div>
       <div class="ctl grid2">
@@ -177,8 +177,8 @@
           <input type="range" id="bodyLS" min="-0.05" max="0.8" step="0.01" value="0">
         </div>
         <div>
-          <label>标签字间距 <output id="outLabelLS">0.19</output>em</label>
-          <input type="range" id="labelLS" min="0" max="0.6" step="0.01" value="0.185">
+          <label>标签字间距 <output id="outLabelLS">0.20</output>em</label>
+          <input type="range" id="labelLS" min="0" max="0.6" step="0.01" value="0.2">
         </div>
       </div>
       <div class="ctl grid2">
@@ -213,12 +213,12 @@
       <div class="grp">白区上下留白</div>
       <div class="ctl grid2">
         <div>
-          <label>顶部留白 <output id="outBodyPadTop">100%</output></label>
-          <input type="range" id="bodyPadTopRatio" min="0" max="250" step="5" value="100">
+          <label>顶部留白 <output id="outBodyPadTop">40%</output></label>
+          <input type="range" id="bodyPadTopRatio" min="0" max="250" step="5" value="40">
         </div>
         <div>
-          <label>底部留白 <output id="outBodyPadBottom">100%</output></label>
-          <input type="range" id="bodyPadBottomRatio" min="0" max="250" step="5" value="100">
+          <label>底部留白 <output id="outBodyPadBottom">40%</output></label>
+          <input type="range" id="bodyPadBottomRatio" min="0" max="250" step="5" value="40">
         </div>
       </div>
       <div class="small muted">
@@ -253,7 +253,7 @@
       <div class="ctl">
         <label>字体</label>
         <select id="fontFamily">
-          <option value="SimHei, Heiti SC, Microsoft YaHei, PingFang SC, sans-serif">黑体（默认）</option>
+          <option value="SimHei, Heiti SC, Microsoft YaHei, PingFang SC, sans-serif" selected>黑体（默认）</option>
           <option value="Microsoft YaHei, PingFang SC, Hiragino Sans GB, Noto Sans CJK SC, sans-serif">微软雅黑 / 苹方</option>
           <option value="SimSun, Songti SC, serif">宋体</option>
           <option value="KaiTi, Kaiti SC, STKaiti, serif">楷体</option>
@@ -320,7 +320,7 @@
         <div>
           <label>格式</label>
           <select id="format">
-            <option value="image/jpeg">JPG（体积小）</option>
+            <option value="image/jpeg" selected>JPG（体积小）</option>
             <option value="image/png">PNG（无损）</option>
             <option value="image/webp">WebP</option>
           </select>

@@ -25,8 +25,8 @@ jobs:
       - name: 构建产物与源码同步
         run: |
           node build.js
-          if [ -n "$(git status --porcelain index.html)" ]; then
-            echo "::error::index.html 与 src/ 不一致，请本地执行 node build.js 后一起提交"
-            git diff --stat index.html
+          if [ -n "$(git status --porcelain index.html src/index.html)" ]; then
+            echo "::error::构建后有文件变动：index.html 未更新，或 src/index.html 的控件初值没跟上 DEFAULTS（build 会自动同步，本地跑一次并提交即可）"
+            git status --porcelain index.html src/index.html
             exit 1
           fi

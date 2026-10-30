@@ -28,6 +28,96 @@ const logoLiteral = JSON.stringify(logoDataUrl).replace(/<\//g, '<\\/');
 let html = read(path.join(src, 'index.html'));
 const css = read(path.join(src, 'styles.css'));
 
+/* =========================================================================
+ * 把 DEFAULTS 同步回 src/index.html —— 默认值只允许存在一处
+ *
+ * 以前改默认值要改两个地方（render.js 的 DEFAULTS + src/index.html 的 value=""），
+ * 漏一处不会报错、只是「面板第一帧显示旧值/静态检查变红」。现在：
+ *   改 DEFAULTS → node build.js → HTML 里的 value / checked / <output> 初值自动对齐。
+ * 换算规则完全复用 src/params.js（和运行时回显同一套），不另写一份。
+ * ========================================================================= */
+function syncHtmlDefaults(markup) {
+  const PR = globalThis.FreyaParams;
+  const DEF = globalThis.FreyaWM.DEFAULTS;
+  const ctrlById = new Map(PR.ALL.map((e) => [e.id, e]));
+  const ctrlByOut = new Map(PR.ALL.filter((e) => e.out).map((e) => [e.out, e]));
+  const touched = [];
+  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // 1) <input> 的 value / checkbox 的 checked
+  markup = markup.replace(/<input\b([^>]*)>/g, (m, attrs) => {
+    const idm = /\bid="([^"]+)"/.exec(attrs);
+    const e = idm && ctrlById.get(idm[1]);
+    if (!e) return m;
+    const want = PR.toControl(e, DEF);
+    let next = attrs;
+    if (e.kind === 'bool') {
+      next = next.replace(/(\schecked)(?:\s+checked)+/g, '$1');        // 顺带收敛重复的 checked
+      const has = /\schecked(?=[\s/>]|$)/.test(next);
+      if (want && !has) next = next.replace(/\s*$/, '') + ' checked';
+      if (!want && has) next = next.replace(/\s+checked(?=[\s/>]|$)/, '');
+    } else {
+      const v = String(want);
+      next = /\bvalue="[^"]*"/.test(next)
+        ? next.replace(/\bvalue="[^"]*"/, 'value="' + v + '"')
+        : next + ' value="' + v + '"';
+    }
+    if (next !== attrs) { touched.push(e.id); return '<input' + next + '>'; }
+    return m;
+  });
+
+  // 2) <select> 的选中项（值在 <option> 上，不能在 select 标签上加 value）
+  markup = markup.replace(/<select\b([^>]*\bid="([^"]+)"[^>]*)>([\s\S]*?)<\/select>/g, (m, attrs, id, inner) => {
+    const e = ctrlById.get(id);
+    if (!e) return m;
+    const want = String(PR.toControl(e, DEF));
+    const opt = new RegExp('(<option\\b[^>]*\\bvalue="' + escRe(want) + '")');
+    if (!opt.test(inner)) return m;                                   // 值不在选项里就保持原样
+    const hasSelected = /\sselected(?=[\s/>]|$)/.test(inner);
+    const firstVal = /\<option\b[^>]*\bvalue="([^"]*)"/.exec(inner);
+    // 没有显式 selected、且默认项本来就是第一个选项 → 不用改（浏览器的默认选择就是它）
+    if (!hasSelected && firstVal && firstVal[1] === want) return m;
+    const body = inner.replace(/\s+selected(?=[\s/>]|$)/g, '').replace(opt, '$1 selected');
+    if (body !== inner) touched.push(e.id);
+    return '<select' + attrs + '>' + body + '</select>';
+  });
+
+  // 3) <output> 的初始文本（面板上那些彩色数字）
+  markup = markup.replace(/(<output\b[^>]*\bid="([^"]+)"[^>]*>)([^<]*)(<\/output>)/g, (m, open, id, text, close) => {
+    const e = ctrlByOut.get(id);
+    if (!e) return m;
+    const want = PR.formatOut(e, DEF);
+    if (text === want) return m;
+    touched.push(id);
+    return open + want + close;
+  });
+
+  return { markup, touched };
+}
+
+/* 在 Node 里以「浏览器脚本」的方式加载 render.js + params.js，拿到 DEFAULTS 与声明表 */
+function loadParams() {
+  const sandbox = globalThis;
+  const run = (file) => new Function('module', 'global', 'window', 'document', 'Image', 'crypto',
+    read(path.join(src, file)))({ exports: {} }, sandbox, sandbox, {}, function () {}, sandbox.crypto || {});
+  run('render.js');
+  run('params.js');
+  if (!sandbox.FreyaWM || !sandbox.FreyaParams) throw new Error('render.js / params.js 未正确导出');
+  return sandbox.FreyaParams;
+}
+
+{
+  loadParams();
+  const synced = syncHtmlDefaults(html);
+  if (synced.markup !== html) {
+    html = synced.markup;
+    const srcHtml = path.join(src, 'index.html');
+    fs.writeFileSync(srcHtml, html, 'utf8');
+    console.log(`已按 DEFAULTS 同步 src/index.html 的控件初值：${synced.touched.join(', ')}`);
+  }
+}
+
+
 /* 脚本内联顺序 = 依赖顺序：底层工具 → 渲染引擎 → 参数/图片/命名 → 界面编排。
  * 加新文件时只改这一张表（和 src/index.html 里的 <script src>）。 */
 const SCRIPTS = [

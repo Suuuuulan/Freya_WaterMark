@@ -458,17 +458,17 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
       <div class="card-body">
       <div class="ctl">
         <label>顶部标题</label>
-        <input type="text" id="title" value="南京云之宝智算中心" placeholder="例如：某某公司项目部">
+        <input type="text" id="title" value="XXX项目" placeholder="例如：某某公司项目部">
       </div>
       <div class="grp">标题文字属性</div>
       <div class="ctl grid2">
         <div>
-          <label>字号 <output id="outTitleScale">100%</output></label>
-          <input type="range" id="titleFontScale" min="40" max="200" value="100">
+          <label>字号 <output id="outTitleScale">110%</output></label>
+          <input type="range" id="titleFontScale" min="40" max="200" value="110">
         </div>
         <div>
-          <label>字高 <output id="outTitleHeight">100%</output></label>
-          <input type="range" id="titleHeightScale" min="50" max="200" value="100">
+          <label>字高 <output id="outTitleHeight">110%</output></label>
+          <input type="range" id="titleHeightScale" min="50" max="200" value="110">
         </div>
       </div>
       <div class="ctl grid2">
@@ -483,12 +483,12 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
       </div>
       <div class="ctl grid2">
         <div>
-          <label>字间距 <output id="outTitleLS">5</output>px</label>
-          <input type="range" id="titleLS" min="0" max="40" step="1" value="5">
+          <label>字间距 <output id="outTitleLS">0.00</output>px</label>
+          <input type="range" id="titleLS" min="0" max="40" step="1" value="0">
         </div>
         <div>
-          <label>顶栏高度 <output id="outHeaderPad">180%</output></label>
-          <input type="range" id="headerPadRatio" min="120" max="320" value="180">
+          <label>顶栏高度 <output id="outHeaderPad">140%</output></label>
+          <input type="range" id="headerPadRatio" min="120" max="320" value="140">
         </div>
       </div>
       <div class="small muted" style="margin:-4px 0 10px">
@@ -515,18 +515,18 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
           <input type="range" id="bodyFontScale" min="40" max="250" value="120">
         </div>
         <div>
-          <label>字高 <output id="outBodyHeight">100%</output></label>
-          <input type="range" id="bodyHeightScale" min="50" max="200" value="100">
+          <label>字高 <output id="outBodyHeight">110%</output></label>
+          <input type="range" id="bodyHeightScale" min="50" max="200" value="110">
         </div>
       </div>
       <div class="ctl grid2">
         <div>
-          <label>行高 <output id="outLineH">1.35</output></label>
-          <input type="range" id="lineHeightRatio" min="1" max="3" step="0.05" value="1.35">
+          <label>行高 <output id="outLineH">1.50</output></label>
+          <input type="range" id="lineHeightRatio" min="1" max="3" step="0.05" value="1.5">
         </div>
         <div>
-          <label>行间距 <output id="outRowGap">0.18</output></label>
-          <input type="range" id="rowGapRatio" min="0" max="1.2" step="0.02" value="0.18">
+          <label>行间距 <output id="outRowGap">0.20</output></label>
+          <input type="range" id="rowGapRatio" min="0" max="1.2" step="0.02" value="0.2">
         </div>
       </div>
       <div class="ctl grid2">
@@ -535,8 +535,8 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
           <input type="range" id="bodyLS" min="-0.05" max="0.8" step="0.01" value="0">
         </div>
         <div>
-          <label>标签字间距 <output id="outLabelLS">0.19</output>em</label>
-          <input type="range" id="labelLS" min="0" max="0.6" step="0.01" value="0.185">
+          <label>标签字间距 <output id="outLabelLS">0.20</output>em</label>
+          <input type="range" id="labelLS" min="0" max="0.6" step="0.01" value="0.2">
         </div>
       </div>
       <div class="ctl grid2">
@@ -571,12 +571,12 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
       <div class="grp">白区上下留白</div>
       <div class="ctl grid2">
         <div>
-          <label>顶部留白 <output id="outBodyPadTop">100%</output></label>
-          <input type="range" id="bodyPadTopRatio" min="0" max="250" step="5" value="100">
+          <label>顶部留白 <output id="outBodyPadTop">40%</output></label>
+          <input type="range" id="bodyPadTopRatio" min="0" max="250" step="5" value="40">
         </div>
         <div>
-          <label>底部留白 <output id="outBodyPadBottom">100%</output></label>
-          <input type="range" id="bodyPadBottomRatio" min="0" max="250" step="5" value="100">
+          <label>底部留白 <output id="outBodyPadBottom">40%</output></label>
+          <input type="range" id="bodyPadBottomRatio" min="0" max="250" step="5" value="40">
         </div>
       </div>
       <div class="small muted">
@@ -611,7 +611,7 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
       <div class="ctl">
         <label>字体</label>
         <select id="fontFamily">
-          <option value="SimHei, Heiti SC, Microsoft YaHei, PingFang SC, sans-serif">黑体（默认）</option>
+          <option value="SimHei, Heiti SC, Microsoft YaHei, PingFang SC, sans-serif" selected>黑体（默认）</option>
           <option value="Microsoft YaHei, PingFang SC, Hiragino Sans GB, Noto Sans CJK SC, sans-serif">微软雅黑 / 苹方</option>
           <option value="SimSun, Songti SC, serif">宋体</option>
           <option value="KaiTi, Kaiti SC, STKaiti, serif">楷体</option>
@@ -678,7 +678,7 @@ code { background: #0e1318; border: 1px solid var(--line); border-radius: 4px; p
         <div>
           <label>格式</label>
           <select id="format">
-            <option value="image/jpeg">JPG（体积小）</option>
+            <option value="image/jpeg" selected>JPG（体积小）</option>
             <option value="image/png">PNG（无损）</option>
             <option value="image/webp">WebP</option>
           </select>
@@ -943,30 +943,30 @@ window.FREYA_LOGO_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
     opacity: 1.0,
 
     showTable: true,
-    title: '南京云之宝智算中心',
-    titleLS: 5,             // 标题字距（**绝对像素**；放不下时自动继续收紧）
-    titleFontScale: 1.0,    // 标题字号 = 跟随后的字号 ×1.0（与行文字同高）
-    titleHeightScale: 1.0,  // 标题字形纵向拉伸：>1 变高（以行中心为锚点，居中不受影响）
+    title: 'XXX项目',
+    titleLS: 0,             // 标题字距（**绝对像素**；放不下时自动继续收紧）
+    titleFontScale: 1.1,    // 标题字号 = 跟随后的字号 ×1.0（与行文字同高）
+    titleHeightScale: 1.1,  // 标题字形纵向拉伸：>1 变高（以行中心为锚点，居中不受影响）
     titleLineHeightRatio: 1.5, // 标题行高 = 字号 ×1.5（与字号解耦：字号小而行高更高）
     titleLineGapRatio: 0.0, // 标题行间距：折行时两行之间再留 字号 ×此值（单行标题无效果）
-    headerPadRatio: 1.8,    // 顶栏高 = 标题行高 ×1.8（上下留白按文字高度算）
+    headerPadRatio: 1.4,    // 顶栏高 = 标题行高 ×1.8（上下留白按文字高度算）
     bodyLS: 0.0,
-    labelLS: 0.185,         // 标签内字间距（em）——参照水印相机 APP 实测 ≈0.185em
+    labelLS: 0.20,         // 标签内字间距（em）——参照水印相机 APP 实测 ≈0.185em
     valueGapRatio: 0.20,    // 「标签」到「值」的间距 = 字号 ×倍率（APP 实测 ≈0.20em）
     labelW: 1.0,
     bodyFontScale: 1.2,     // 正文字号 = 参考字高 ×1.2（面板「字号」）
-    bodyHeightScale: 1.0,   // 正文字高：只把字形纵向拉高（面板「字高」，以行中线为锚点）
+    bodyHeightScale: 1.1,   // 正文字高：只把字形纵向拉高（面板「字高」，以行中线为锚点）
     headerFontScale: 1.2,   // 标题字号（不再跟随正文字号；面板「字号」再乘上去）
-    lineHeightRatio: 1.35,  // 行高 = 字号 ×1.35（按字距收紧后的紧凑值，可调）
-    rowGapRatio: 0.18,      // 行间距 = 字号 ×0.18（可调，配合行间分隔线）
+    lineHeightRatio: 1.5,  // 行高 = 字号 ×1.35（按字距收紧后的紧凑值，可调）
+    rowGapRatio: 0.2,      // 行间距 = 字号 ×0.18（可调，配合行间分隔线）
     rowSepH: 1,             // 行间分隔线粗细（px，固定不随图片缩放；0 = 不画也不占位置）
     rowSepAlpha: 0.18,      // 行间分隔线浓度（黑色 alpha）
-    bodyPadTopRatio: 1.0,   // 白色区域「顶部留白」倍率（1.0 = 参考图实测 0.0147×短边）
-    bodyPadBottomRatio: 1.0,// 白色区域「底部留白」倍率（1.0 = 参考图实测 0.0226×短边）
+    bodyPadTopRatio: 0.4,   // 白色区域「顶部留白」倍率（1.0 = 参考图实测 0.0147×短边）
+    bodyPadBottomRatio: 0.4,// 白色区域「底部留白」倍率（1.0 = 参考图实测 0.0226×短边）
 
     rows: [
       { on: true, label: '拍摄时间:', type: 'datetime', text: '2026.08.19 10:59' },
-      { on: true, label: '地　　点:', type: 'text', text: '南京市江宁区·南京绿地国际花都2期' }
+      { on: true, label: '地　　点:', type: 'text', text: 'XX市XX区·XXXXXXXXXX2期' }
     ],
 
     accent: '#15a7fa',
