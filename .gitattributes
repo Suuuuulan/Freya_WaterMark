@@ -1,0 +1,12 @@
+# 统一换行符处理
+# 仓库里存 LF，工作区按平台检出一份：
+#   Windows 的 .bat/.cmd 必须是 CRLF，否则 cmd 解析会错乱（报一堆「不是内部或外部命令」）
+* text=auto
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.sh  text eol=lf
+
+# 二进制，避免被当作文本做换行转换
+*.png binary
+*.jpg binary
+*.zip binary

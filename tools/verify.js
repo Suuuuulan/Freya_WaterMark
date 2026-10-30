@@ -52,9 +52,13 @@ new Function('module', 'window', 'globalThis', 'document', 'Image', code)(
 );
 const WM = global.FreyaWM || mod.exports;
 
-/* ---------- 3. 计算参考图（1773×2364）下的版式 ---------- */
+/* ---------- 3. 计算参考图（1773×2364）下的版式 ----------
+ * 用「参考基线参数」(tools/ref-params.js) 算，而不是出厂默认值：
+ * 这个脚本回答的是「引擎按参考参数画，能不能还原参考图」。
+ * 出厂默认值是产品选择，可以随时调离参考图——那部分差异单独列出来看。 */
+const REFP = require('./ref-params');
 const W = 1773, H = 2364, BASE = 1773;
-const p = Object.assign({}, WM.DEFAULTS);
+const p = Object.assign({}, WM.DEFAULTS, REFP);
 const rows = [
   { on: true, label: p.rows[0].label, value: '2026.08.19 10:59' },
   { on: true, label: p.rows[1].label, value: p.rows[1].text }
@@ -138,6 +142,16 @@ for (const [label, ref, val, changed] of rowsOut) {
 console.log('----------------------------------------------------------------');
 console.log('还原度最大偏差（不含按需求调整项）: ' + worst.toFixed(1) + '%  (' + worstName + ')');
 console.log('按需求调整项: ' + changedCount + ' 项（字高 ×1.2、标题字号独立、行距收紧；表格高度随之变高）—— 有意偏离参考图');
+
+/* 出厂默认值是被有意调过的（字号/留白/行距…），这里只是列出来，
+ * 方便区分「引擎跑偏」和「默认值本来就想要这样」。不计入失败。 */
+const drift = Object.keys(REFP).filter((k) => WM.DEFAULTS[k] !== REFP[k]);
+if (drift.length) {
+  console.log('\n出厂默认值 vs 参考基线（有意调整，不影响上面的还原度结论）：');
+  drift.forEach((k) => console.log('  · ' + k + ': ' + REFP[k] + ' → ' + WM.DEFAULTS[k]));
+} else {
+  console.log('\n出厂默认值与参考基线一致。');
+}
 
 /* ---------- 5. 折行检查 ---------- */
 console.log('\n折行检查（浏览器里 SimHei 汉字宽 = 1em）：');

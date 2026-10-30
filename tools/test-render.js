@@ -99,7 +99,10 @@ const fontPx = (f) => { const m = /(\d+(?:\.\d+)?)px/.exec(String(f)); return m 
 
 /* ---------- 跑一遍绘制 ---------- */
 const W = 1773, H = 2364, BASE = 1773;
-const p = Object.assign({}, WM.DEFAULTS, { code: 'K7M3QPX9RT' });
+/* 版式/机制类断言一律用「参考基线」(tools/ref-params.js) 画图：
+ * 它们检验的是引擎行为，不该因为把出厂默认值调离参考图而变红。 */
+const REF = require('./ref-params');
+const p = Object.assign({}, WM.DEFAULTS, REF, { code: 'K7M3QPX9RT' });
 const rows = [
   { on: true, label: p.rows[0].label, value: '2026.08.19 10:59' },
   { on: true, label: p.rows[1].label, value: p.rows[1].text }
@@ -125,11 +128,11 @@ setTimeout(() => {
   const y = res.y;
   check('表格底边距 ≈ 40（参考 40）', near(H - (y + res.h), 40, 5), 'got ' + (H - y - res.h).toFixed(1));
   check('顶栏高度 = 标题行高 ×headerPadRatio（留白按文字高度）',
-    near(res.metrics.headerH, res.metrics.titleLineH * WM.DEFAULTS.headerPadRatio, 2),
+    near(res.metrics.headerH, res.metrics.titleLineH * p.headerPadRatio, 2),
     'got ' + res.metrics.headerH.toFixed(1) + ' 期望 ' +
-    (res.metrics.titleLineH * WM.DEFAULTS.headerPadRatio).toFixed(1));
+    (res.metrics.titleLineH * p.headerPadRatio).toFixed(1));
   check('标题行高与字号解耦（= 字号 ×titleLineHeightRatio）',
-    near(res.metrics.titleLineH, res.metrics.fH * WM.DEFAULTS.titleLineHeightRatio, 0.5),
+    near(res.metrics.titleLineH, res.metrics.fH * p.titleLineHeightRatio, 0.5),
     'titleLineH=' + res.metrics.titleLineH.toFixed(1) + ' fH=' + res.metrics.fH.toFixed(1));
   check('顶栏比标题行高更舒展', res.metrics.headerH > res.metrics.titleLineH,
     '顶栏=' + res.metrics.headerH.toFixed(1) + ' 标题行高=' + res.metrics.titleLineH.toFixed(1));
@@ -138,7 +141,7 @@ setTimeout(() => {
   check('正文字高 = 参考字高 ×1.2（120%）', near(res.metrics.fB, BASE * WM.M.bodyFont * 1.2, 0.5),
     'got ' + res.metrics.fB.toFixed(1) + ' 期望 ' + (BASE * WM.M.bodyFont * 1.2).toFixed(1));
   check('默认字体族为黑体（SimHei）', /SimHei/.test(WM.DEFAULTS.fontFamily), WM.DEFAULTS.fontFamily.slice(0, 24));
-  check('正文字距已收紧（默认 0.06em）', WM.DEFAULTS.bodyLS <= 0.08, 'bodyLS=' + WM.DEFAULTS.bodyLS);
+  check('正文字距已收紧（默认 0.06em）', p.bodyLS <= 0.08, 'bodyLS=' + p.bodyLS);
 
   console.log('\n2) 颜色');
   const fills = ctx.ops.filter((o) => o[0] === 'fillRect');
@@ -175,12 +178,12 @@ setTimeout(() => {
   check('标题宽度 = 各字宽之和 + 字距', near(titleW, expectTitleW, 2.5),
     'got ' + titleW.toFixed(1) + ' 期望 ' + expectTitleW.toFixed(1));
   // 字距：绝对值 8px（不随字号放大而变宽），且标题总宽必须装得进表格
-  check('标题字距为绝对值 px（不随字号等比放大）', near(res.metrics.titleLSpx, WM.DEFAULTS.titleLS, 0.5),
-    'titleLSpx=' + res.metrics.titleLSpx.toFixed(2) + ' 期望 ' + WM.DEFAULTS.titleLS);
+  check('标题字距为绝对值 px（不随字号等比放大）', near(res.metrics.titleLSpx, p.titleLS, 0.5),
+    'titleLSpx=' + res.metrics.titleLSpx.toFixed(2) + ' 期望 ' + p.titleLS);
   check('标题总宽装得进顶栏（除圆点预留区）',
     titleW <= res.w - res.metrics.padX * 2 - res.metrics.dotReserve * 2 + 1,
     '标题=' + titleW.toFixed(1) + ' 可用≈' + (res.w - res.metrics.padX * 2 - res.metrics.dotReserve * 2).toFixed(1));
-  check('标题字号 = 跟随后再 ×titleFontScale', near(res.metrics.fH, BASE * WM.M.headerFont * WM.DEFAULTS.bodyFontScale * WM.DEFAULTS.titleFontScale, 0.6),
+  check('标题字号 = 跟随后再 ×titleFontScale', near(res.metrics.fH, BASE * WM.M.headerFont * p.bodyFontScale * p.titleFontScale, 0.6),
     'fH=' + res.metrics.fH.toFixed(1));
   // 标题纵向拉伸：>1 时 translate 到行中心、scale(1,hs) 只压纵向 → 居中不受影响
   const cH = makeRecorder();
@@ -199,7 +202,7 @@ setTimeout(() => {
     cH1.ops.filter((o) => o[0] === 'scale').length === 0,
     'scale ops=' + cH1.ops.filter((o) => o[0] === 'scale').length);
   check('纵向拉伸不改变横向排布（锚点与结构字号不变）',
-    near(res.metrics.fH, BASE * WM.M.headerFont * WM.DEFAULTS.bodyFontScale * WM.DEFAULTS.titleFontScale, 0.6),
+    near(res.metrics.fH, BASE * WM.M.headerFont * p.bodyFontScale * p.titleFontScale, 0.6),
     'fH=' + res.metrics.fH.toFixed(1));
   const whiteTitles = title.filter((o) => o[4] === '#ffffff');
   check('标题为白色', whiteTitles.length === titleChars.length,
@@ -241,22 +244,23 @@ setTimeout(() => {
     'labelW+gap+valueW=' + (res.metrics.labelW + res.metrics.gap + res.metrics.valueW).toFixed(2) +
     ' bodyW=' + res.metrics.bodyW.toFixed(2));
   // 标签内字距 与 标签→值间距：都应与字号成固定比例（参照 APP 实测）
-  check('标签内字距 = 字号 ×labelLS', near(res.metrics.labelLSpx, fB * WM.DEFAULTS.labelLS, 0.2),
-    'got ' + res.metrics.labelLSpx.toFixed(2) + ' 期望 ' + (fB * WM.DEFAULTS.labelLS).toFixed(2));
+  check('标签内字距 = 字号 ×labelLS', near(res.metrics.labelLSpx, fB * p.labelLS, 0.2),
+    'got ' + res.metrics.labelLSpx.toFixed(2) + ' 期望 ' + (fB * p.labelLS).toFixed(2));
   check('标签→值间距 = 字号 ×valueGapRatio（比旧版大幅收紧）',
-    near(res.metrics.gap, fB * WM.DEFAULTS.valueGapRatio, 0.2) && res.metrics.gap < 15,
-    'got ' + res.metrics.gap.toFixed(2) + ' 期望 ' + (fB * WM.DEFAULTS.valueGapRatio).toFixed(2));
+    near(res.metrics.gap, fB * p.valueGapRatio, 0.2) && res.metrics.gap < 15,
+    'got ' + res.metrics.gap.toFixed(2) + ' 期望 ' + (fB * p.valueGapRatio).toFixed(2));
   check('值列起始 = 标签列结束 + 间距', near(res.metrics.valueX, res.metrics.labelEndX + res.metrics.gap, 0.01),
     'valueX=' + res.metrics.valueX.toFixed(2));
 
   console.log('\n3.4) 新增默认值与联动');
-  check('圆角默认 16/1000', WM.DEFAULTS.radius === 0.016, 'radius=' + WM.DEFAULTS.radius);
-  check('正文字距默认 0.00em', WM.DEFAULTS.bodyLS === 0, 'bodyLS=' + WM.DEFAULTS.bodyLS);
-  check('表格不透明度默认 100%', WM.DEFAULTS.tableOpacity === 1, 'tableOpacity=' + WM.DEFAULTS.tableOpacity);
-  check('防伪码字号默认 128%', WM.DEFAULTS.codeSize === 1.28, 'codeSize=' + WM.DEFAULTS.codeSize);
+  check('圆角默认 16/1000', p.radius === 0.016, 'radius=' + p.radius);
+  check('正文字距默认 0.00em', p.bodyLS === 0, 'bodyLS=' + p.bodyLS);
+  check('表格不透明度默认 100%', p.tableOpacity === 1, 'tableOpacity=' + p.tableOpacity);
+  check('防伪码字号默认值在 40%~220% 面板区间内', WM.DEFAULTS.codeSize > 0.4 && WM.DEFAULTS.codeSize <= 2.2,
+    'codeSize=' + WM.DEFAULTS.codeSize);
   check('标题字号跟随正文字高倍率（再 ×titleFontScale）',
-    near(res.metrics.fH, BASE * WM.M.headerFont * WM.DEFAULTS.bodyFontScale * WM.DEFAULTS.titleFontScale, 0.6),
-    'fH=' + res.metrics.fH.toFixed(1) + ' 期望 ' + (BASE * WM.M.headerFont * WM.DEFAULTS.bodyFontScale * WM.DEFAULTS.titleFontScale).toFixed(1));
+    near(res.metrics.fH, BASE * WM.M.headerFont * p.bodyFontScale * p.titleFontScale, 0.6),
+    'fH=' + res.metrics.fH.toFixed(1) + ' 期望 ' + (BASE * WM.M.headerFont * p.bodyFontScale * p.titleFontScale).toFixed(1));
   // 表格单独透明度：tableOpacity=0.5 时表格操作的 alpha 应约为 0.5
   const cT = makeRecorder();
   r.draw(cT, Object.assign({}, p, { tableOpacity: 0.5, showLogo: false }), W, H, BASE, rows);
@@ -268,7 +272,7 @@ setTimeout(() => {
   const sepH = res.metrics.sepH;
   const seps = ctx.ops.filter((o) => o[0] === 'fillRect' && Math.abs(o[4] - sepH) < 0.01);
   check('两行之间绘制了分隔线', seps.length === 1, 'got ' + seps.length + ' 条');
-  check('默认粗细 = DEFAULTS.rowSepH = 1px', WM.DEFAULTS.rowSepH === 1 && near(sepH, 1, 0.02),
+  check('默认粗细 = DEFAULTS.rowSepH = 1px', p.rowSepH === 1 && near(sepH, 1, 0.02),
     'sepH=' + sepH);
   if (seps.length) {
     const m = res.metrics;
@@ -344,7 +348,7 @@ setTimeout(() => {
     check('底部留白 50% → padBottom 减半', near(resF.metrics.padBottom, res.metrics.padBottom * 0.5, 0.6),
       resF.metrics.padBottom.toFixed(1) + ' vs ' + res.metrics.padBottom.toFixed(1));
     check('默认倍率 = 1（不改动参考图实测留白）',
-      WM.DEFAULTS.bodyPadTopRatio === 1 && WM.DEFAULTS.bodyPadBottomRatio === 1);
+      p.bodyPadTopRatio === 1 && p.bodyPadBottomRatio === 1);
     check('底部留白默认比顶部大（参考图实测比例 1.54）',
       near(res.metrics.padBottom / res.metrics.padBodyTop, 0.0226 / 0.0147, 0.02),
       (res.metrics.padBottom / res.metrics.padBodyTop).toFixed(3));

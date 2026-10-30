@@ -7,7 +7,9 @@ const path = require('path');
 
 const root = __dirname;
 const src = path.join(root, 'src');
-const read = (p) => fs.readFileSync(p, 'utf8');
+/* 一律读成 LF：产物不再混着 CRLF/LF（否则 git 会把 index.html 标成 w/mixed，
+ * 也让不同平台的构建结果字节不一致，CI 的「产物与源码同步」检查会误报）。 */
+const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n?/g, '\n');
 
 /* ---------- logo → data URL ---------- */
 let logoDataUrl = '';
